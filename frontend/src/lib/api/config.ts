@@ -23,7 +23,10 @@ export const API_ENDPOINTS = {
     `/api/v1/users/${userId}/connections/${provider}`,
   userConnectionHevy: (userId: string) =>
     `/api/v1/users/${userId}/connections/hevy`,
+  providerSetting: (provider: string) => `/api/v1/oauth/providers/${provider}`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
+  userWorkoutDetail: (userId: string, workoutId: string) =>
+    `/api/v1/users/${userId}/events/workouts/${workoutId}`,
   userAppleXmlImport: (userId: string) =>
     `/api/v1/users/${userId}/import/apple/xml/direct`,
   userAppleXmlPresignedUrl: (userId: string) =>
@@ -74,6 +77,9 @@ export const API_ENDPOINTS = {
   // Accept invitation (public - no auth)
   acceptInvitation: '/api/v1/invitations/accept',
 
+  // Data summary endpoint
+  userDataSummary: (userId: string) => `/api/v1/users/${userId}/summaries/data`,
+
   // Summary endpoints (authenticated - requires user authorization)
   userActivitySummary: (userId: string) =>
     `/api/v1/users/${userId}/summaries/activity`,
@@ -85,4 +91,33 @@ export const API_ENDPOINTS = {
 
   // Sleep sessions endpoint
   userSleepSessions: (userId: string) => `/api/v1/users/${userId}/events/sleep`,
+  userSleepSessionDetail: (userId: string, sessionId: string) =>
+    `/api/v1/users/${userId}/events/sleep/${sessionId}`,
+
+  // Health scores endpoint
+  userHealthScores: (userId: string) => `/api/v1/users/${userId}/health-scores`,
+
+  // Seed data endpoints
+  seedGenerate: '/api/v1/settings/seed',
+  seedPresets: '/api/v1/settings/seed/presets',
+  seedSleepProfiles: '/api/v1/settings/seed/sleep-profiles',
+
+  // Webhooks endpoints
+  webhookEventTypes: '/api/v1/webhooks/event-types',
+  webhookEndpoints: '/api/v1/webhooks/endpoints',
+  webhookEndpointDetail: (id: string) => `/api/v1/webhooks/endpoints/${id}`,
+  webhookEndpointSecret: (id: string) =>
+    `/api/v1/webhooks/endpoints/${id}/secret`,
+  webhookEndpointTest: (id: string) => `/api/v1/webhooks/endpoints/${id}/test`,
+  webhookEndpointAttempts: (id: string) =>
+    `/api/v1/webhooks/endpoints/${id}/attempts`,
+  webhookMessages: '/api/v1/webhooks/messages',
+
+  // Sync status / SSE endpoints
+  // ApiKeyDep accepts both API keys and developer JWT tokens, so a single
+  // set of endpoints works for both external integrations and the dashboard.
+  syncStatusStream: (userId: string) => `/api/v1/users/${userId}/sync/stream`,
+  syncStatusRecent: (userId: string) => `/api/v1/users/${userId}/sync/recent`,
+  syncStatusRuns: (userId: string) => `/api/v1/users/${userId}/sync/runs`,
+  syncStatusAllRuns: '/api/v1/sync/runs',
 } as const;

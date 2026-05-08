@@ -19,6 +19,7 @@ export interface UserRead {
   external_user_id: string | null;
   last_synced_at: string | null;
   last_synced_provider: string | null;
+  has_active_connection: boolean;
 }
 
 export interface UserCreate {
@@ -179,10 +180,40 @@ export interface DataPointsInfo {
   top_workout_types: WorkoutTypeMetric[];
 }
 
+export interface ProviderConnectionCount {
+  provider: string;
+  count: number;
+}
+
+export interface ConnectionsCoverage {
+  users_with_active: number;
+  users_with_multi_active: number;
+  top_providers: ProviderConnectionCount[];
+}
+
 export interface DashboardStats {
   total_users: CountWithGrowth;
   active_conn: CountWithGrowth;
   data_points: DataPointsInfo;
+  connections_coverage: ConnectionsCoverage;
+}
+
+export interface ProviderDataCount {
+  provider: string;
+  data_points: number;
+  series_counts: Record<string, number>;
+  workout_count: number;
+  sleep_count: number;
+}
+
+export interface UserDataSummary {
+  user_id: string;
+  total_data_points: number;
+  total_workouts: number;
+  total_sleep_events: number;
+  series_type_counts: Record<string, number>;
+  workout_type_counts: Record<string, number>;
+  by_provider: ProviderDataCount[];
 }
 
 export interface Provider {
@@ -191,6 +222,8 @@ export interface Provider {
   has_cloud_api: boolean;
   is_enabled: boolean;
   icon_url: string;
+  live_sync_mode: 'pull' | 'webhook' | null;
+  live_sync_configurable: boolean;
 }
 
 export type WearableProvider =
@@ -213,6 +246,12 @@ export interface UserConnection {
   last_synced_at?: string;
   created_at: string;
   updated_at: string;
+  max_historical_days?: number | null;
+  rest_pull?: boolean;
+  webhook_stream?: boolean;
+  webhook_ping?: boolean;
+  webhook_callback?: boolean;
+  live_sync_mode?: 'pull' | 'webhook' | null;
 }
 
 // ============================================================================
@@ -239,6 +278,7 @@ export interface SleepSession {
   end_time: string;
   source: SourceMetadata;
   duration_seconds: number;
+  sleep_duration_seconds: number | null;
   efficiency_percent: number | null;
   stages: SleepStagesSummary | null;
   sleep_stage_intervals: SleepStage[] | null;
@@ -301,6 +341,7 @@ export interface BodyAveraged {
   period_days: number;
   resting_heart_rate_bpm: number | null;
   avg_hrv_sdnn_ms: number | null;
+  avg_hrv_rmssd_ms: number | null;
   period_start: string;
   period_end: string;
 }
@@ -395,6 +436,10 @@ export interface ApiKey {
 
 export interface ApiKeyCreate {
   name: string;
+}
+
+export interface ApiKeyUpdate {
+  name?: string | null;
 }
 
 export interface Automation {
@@ -586,6 +631,34 @@ export interface InvitationAccept {
   password: string;
 }
 
+// Health Score types
+export interface ScoreComponent {
+  value: number | null;
+  qualifier: string | null;
+}
+
+export interface HealthScoreResponse {
+  id: string;
+  data_source_id: string | null;
+  provider: string | null;
+  category: string;
+  value: number | null;
+  qualifier: string | null;
+  recorded_at: string;
+  zone_offset: string | null;
+  components: Record<string, ScoreComponent> | null;
+}
+
+export interface HealthScoreParams {
+  start_date?: string;
+  end_date?: string;
+  category?: string;
+  provider?: string;
+  limit?: number;
+  offset?: number;
+  [key: string]: string | number | undefined;
+}
+
 // Sync Response (returned by provider sync endpoint)
 export interface SyncResponse {
   success: boolean;
@@ -625,4 +698,82 @@ export interface GarminBackfillStatus {
   attempt_count: number;
   max_attempts: number;
   permanently_failed: boolean;
+}
+
+export interface WebhookEventType {
+  name: string;
+  description: string;
+  child_events?: string[] | null;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  description: string | null;
+  filter_types: string[] | null;
+  user_id: string | null;
+}
+
+export interface WebhookEndpointCreate {
+  url: string;
+  description?: string | null;
+  filter_types?: string[] | null;
+  user_id?: string | null;
+}
+
+export interface WebhookEndpointUpdate {
+  url?: string | null;
+  description?: string | null;
+  filter_types?: string[] | null;
+  user_id?: string | null;
+}
+
+export interface WebhookEndpointSecret {
+  key: string;
+}
+
+export interface WebhookTestEventResponse {
+  message: string;
+  message_id: string;
+}
+
+export interface WebhookMessage {
+  id: string;
+  eventType: string;
+  eventId: string | null;
+  timestamp: string;
+  channels: string[] | null;
+  tags: string[] | null;
+  payload: Record<string, unknown>;
+}
+
+export interface WebhookMessageAttempt {
+  id: string;
+  endpointId: string;
+  msgId: string;
+  url: string;
+  response: string;
+  responseStatusCode: number;
+  responseDurationMs: number;
+  status: number | string;
+  statusText?: string;
+  triggerType: number | string;
+  timestamp: string;
+  msg?: WebhookMessage | null;
+}
+
+export interface WebhookListResponse<T> {
+  data: T[];
+  done: boolean;
+  iterator: string | null;
+  prevIterator: string | null;
+}
+
+export interface WebhookAttemptsParams {
+  limit?: number;
+  iterator?: string | null;
+  before?: string | null;
+  after?: string | null;
+  status?: number | null;
+  event_types?: string[];
 }

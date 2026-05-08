@@ -2,12 +2,12 @@
 
 Syncs data from three Suunto Cloud API endpoints:
 - /247samples/sleep   → EventRecord (category=sleep) + SleepDetails
-- /247samples/recovery → DataPointSeries (recovery_score, resting HR, HRV, SpO2)
+- /247samples/recovery → HealthScore (category=RECOVERY, balance scaled 0-100)
 - /247samples/activity → DataPointSeries (HR, steps, SpO2, energy, HRV)
 - /247/daily-activity-statistics → DataPointSeries (aggregated daily steps/energy)
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -18,13 +18,16 @@ from app.models import DataPointSeries, DataSource, EventRecord
 from app.repositories import EventRecordRepository, UserConnectionRepository
 from app.repositories.data_point_series_repository import DataPointSeriesRepository
 from app.repositories.data_source_repository import DataSourceRepository
-from app.schemas.enums import SeriesType
+from app.schemas.enums import HealthScoreCategory, ProviderName, SeriesType
 from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
+    HealthScoreCreate,
+    ScoreComponent,
     TimeSeriesSampleCreate,
 )
 from app.services.event_record_service import event_record_service
+from app.services.health_score_service import health_score_service
 from app.services.providers.api_client import make_authenticated_request
 from app.services.providers.templates.base_247_data import Base247DataTemplate
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
@@ -44,12 +47,13 @@ _ACTIVITY_SERIES_MAP: dict[str, SeriesType] = {
     "hrv": SeriesType.heart_rate_variability_rmssd,
 }
 
-# Recovery metrics → SeriesType
-# Suunto recovery endpoint provides only Balance (0.0-1.0) and StressState (0-4).
-# Balance maps to recovery_score; StressState has no unified equivalent.
-_RECOVERY_METRICS: list[tuple[str, SeriesType]] = [
-    ("balance", SeriesType.recovery_score),
-]
+# StressState integer → text qualifier (0=Invalid is treated as missing)
+_STRESS_STATE_QUALIFIER: dict[int, str] = {
+    1: "Relaxing",
+    2: "Active",
+    3: "Passive",
+    4: "Stressful",
+}
 
 # Value extractors per activity-sample key
 _VALUE_EXTRACTORS: dict[str, str] = {
@@ -157,6 +161,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Error fetching chunk {current_start} to {current_end}: {e}",
                     provider="suunto",
                     task="fetch_in_chunks",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end
@@ -238,6 +243,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Skipping sleep record {sleep_id}: missing start/end time",
                 provider="suunto",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
             return
 
@@ -286,6 +292,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Error saving sleep record {sleep_id}: {e}",
                 provider="suunto",
                 task="save_sleep_data",
+                user_id=str(user_id),
             )
 
     # ------------------------------------------------------------------
@@ -310,21 +317,24 @@ class Suunto247Data(Base247DataTemplate):
         """Normalize Suunto recovery data to our schema.
 
         Suunto recovery provides:
-        - Balance: body energy level 0.0-1.0 → scaled to 0-100 for recovery_score
-        - StressState: 0-4 integer (no unified equivalent, stored for reference)
+        - Balance: body energy level 0.0-1.0 → scaled to 0-100
+        - StressState: 0-4 integer mapped to a text qualifier
         """
         entry_data: dict[str, Any] = raw_recovery.get("entryData", {})
         timestamp = raw_recovery.get("timestamp")
 
-        # Scale balance from 0.0-1.0 to 0-100 to match recovery_score convention
         balance_raw = entry_data.get("Balance")
         balance_scaled = float(balance_raw) * 100 if balance_raw is not None else None
+
+        stress_state_raw = entry_data.get("StressState")
+        stress_state = int(stress_state_raw) if stress_state_raw is not None else None
 
         return {
             "user_id": user_id,
             "provider": self.provider_name,
             "timestamp": timestamp,
             "balance": balance_scaled,
+            "stress_state": stress_state,
         }
 
     def save_recovery_data(
@@ -333,47 +343,47 @@ class Suunto247Data(Base247DataTemplate):
         user_id: UUID,
         normalized_recovery: dict[str, Any],
     ) -> int:
-        """Save normalized recovery data as DataPointSeries records.
+        """Save normalized recovery data as a HealthScore record.
 
-        Maps Suunto recovery fields to unified SeriesType values.
-        Returns the number of samples saved.
+        Balance (0.0-1.0, scaled to 0-100) becomes the score value.
+        StressState is stored as a component with a text qualifier.
+        Returns 1 if saved, 0 if skipped.
         """
         if not normalized_recovery:
             return 0
 
         timestamp_raw = normalized_recovery.get("timestamp")
-        if not timestamp_raw:
+        balance = normalized_recovery.get("balance")
+        if not timestamp_raw or balance is None:
             return 0
 
         recorded_at = parse_iso_datetime(timestamp_raw) if isinstance(timestamp_raw, str) else timestamp_raw
         if not recorded_at:
             return 0
 
-        count = 0
-        for field_name, series_type in _RECOVERY_METRICS:
-            value = normalized_recovery.get(field_name)
-            if value is None:
-                continue
-            try:
-                sample = TimeSeriesSampleCreate(
-                    id=uuid4(),
-                    user_id=user_id,
-                    source=self.provider_name,
-                    recorded_at=recorded_at,
-                    value=Decimal(str(value)),
-                    series_type=series_type,
-                )
-                timeseries_service.crud.create(db, sample)
-                count += 1
-            except Exception as e:
-                log_structured(
-                    self.logger,
-                    "warning",
-                    f"Failed to save recovery {field_name}: {e}",
-                    provider="suunto",
-                    task="save_recovery_data",
-                )
-        return count
+        stress_state = normalized_recovery.get("stress_state")
+        stress_qualifier = _STRESS_STATE_QUALIFIER.get(stress_state) if stress_state is not None else None
+
+        components = None
+        if stress_qualifier is not None:
+            components = {
+                "stress_state": ScoreComponent(value=stress_state, qualifier=stress_qualifier),
+            }
+
+        health_score_service.create(
+            db,
+            HealthScoreCreate(
+                id=uuid4(),
+                user_id=user_id,
+                provider=ProviderName.SUUNTO,
+                category=HealthScoreCategory.RECOVERY,
+                value=balance,
+                qualifier=stress_qualifier,
+                recorded_at=recorded_at,
+                components=components,
+            ),
+        )
+        return 1
 
     def load_and_save_recovery(
         self,
@@ -401,6 +411,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Failed to save recovery data: {e}",
                     provider="suunto",
                     task="load_and_save_recovery",
+                    user_id=str(user_id),
                 )
 
         return total_count
@@ -552,6 +563,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Error fetching daily activity chunk {current_start} to {current_end}: {e}",
                     provider="suunto",
                     task="get_daily_activity_statistics",
+                    user_id=str(user_id),
                 )
 
             current_start = current_end
@@ -651,6 +663,7 @@ class Suunto247Data(Base247DataTemplate):
                     f"Failed to save sleep data: {e}",
                     provider="suunto",
                     task="load_and_save_sleep",
+                    user_id=str(user_id),
                 )
         return count
 
@@ -663,9 +676,16 @@ class Suunto247Data(Base247DataTemplate):
         is_first_sync: bool = False,
     ) -> dict[str, int]:
         """Load all 247 data types and save to database."""
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         end_dt = parse_datetime_or_default(end_time, now)
         start_dt = parse_datetime_or_default(start_time, end_dt - timedelta(days=28))
+
+        # Ensure both bounds are timezone-aware so chunk comparisons don't raise
+        # TypeError when mixed naive/aware datetimes end up in _fetch_in_chunks.
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
 
         results: dict[str, int] = {
             "sleep_sessions_synced": 0,
@@ -684,9 +704,10 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync sleep data: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
-        # 2. Recovery → DataPointSeries (recovery_score, resting HR, HRV, …)
+        # 2. Recovery → HealthScore (RECOVERY category, balance scaled 0-100)
         try:
             results["recovery_samples_synced"] = self.load_and_save_recovery(db, user_id, start_dt, end_dt)
         except Exception as e:
@@ -696,6 +717,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync recovery data: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         # 3. Activity samples → DataPointSeries (HR, steps, SpO2, energy, HRV)
@@ -710,6 +732,7 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync activity samples: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
 
         # 4. Daily aggregated statistics → DataPointSeries (steps, energy)
@@ -724,6 +747,13 @@ class Suunto247Data(Base247DataTemplate):
                 f"Failed to sync daily activity statistics: {e}",
                 provider="suunto",
                 task="load_and_save_all",
+                user_id=str(user_id),
             )
+
+        # Commit all pending bulk inserts (activity samples, daily stats) that were
+        # not committed within their individual save methods. Sleep and recovery
+        # commit per-record via crud.create/try_commit, but bulk_create_samples
+        # defers commit to the caller intentionally for batching efficiency.
+        db.commit()
 
         return results
