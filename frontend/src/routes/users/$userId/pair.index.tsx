@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ChevronRight,
@@ -8,12 +8,24 @@ import {
   Lock,
   Loader2,
 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useOAuthConnect } from '@/hooks/use-oauth-connect';
 import { useOAuthProviders } from '@/hooks/api/use-oauth-providers';
 import { useUserConnections } from '@/hooks/api/use-health';
-import { useMemo } from 'react';
 import { API_CONFIG } from '@/lib/api/config';
+import { healthService } from '@/lib/api/services/health.service';
+import { ApiError } from '@/lib/errors/api-error';
 import { isAuthenticated } from '@/lib/auth/session';
 
 export const Route = createFileRoute('/users/$userId/pair/')({
@@ -29,6 +41,12 @@ export const Route = createFileRoute('/users/$userId/pair/')({
 function PairWearablePage() {
   const { userId } = Route.useParams();
   const { redirect_url: redirectUrl } = Route.useSearch();
+  const navigate = useNavigate();
+
+  const [hevyDialogOpen, setHevyDialogOpen] = useState(false);
+  const [hevyApiKey, setHevyApiKey] = useState('');
+  const [hevyError, setHevyError] = useState<string | null>(null);
+  const [hevySubmitting, setHevySubmitting] = useState(false);
 
   const { connectionState, connectingProvider, error, connect, reset } =
     useOAuthConnect({ userId, redirectUrl });
@@ -64,8 +82,39 @@ function PairWearablePage() {
     : null;
 
   const handleConnect = (providerId: string) => {
-    if (connectingProvider === null) {
-      connect(providerId);
+    if (connectingProvider !== null) {
+      return;
+    }
+    if (providerId === 'hevy') {
+      setHevyError(null);
+      setHevyApiKey('');
+      setHevyDialogOpen(true);
+      return;
+    }
+    connect(providerId);
+  };
+
+  const submitHevyConnect = async () => {
+    setHevyError(null);
+    setHevySubmitting(true);
+    try {
+      await healthService.connectHevy(userId, hevyApiKey);
+      setHevyDialogOpen(false);
+      navigate({
+        to: '/users/$userId/pair/success',
+        params: { userId },
+        search: { provider: 'hevy', redirect_url: redirectUrl },
+      });
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Connection failed';
+      setHevyError(message);
+    } finally {
+      setHevySubmitting(false);
     }
   };
 
@@ -246,6 +295,70 @@ function PairWearablePage() {
         <Lock className="w-4 h-4 stroke-[1.5]" />
         <span>Your data is encrypted and secure</span>
       </motion.div>
+
+      <Dialog open={hevyDialogOpen} onOpenChange={setHevyDialogOpen}>
+        <DialogContent className="sm:max-w-md border-zinc-800 bg-zinc-950 text-zinc-200">
+          <DialogHeader>
+            <DialogTitle className="text-white">Connect Hevy</DialogTitle>
+            <DialogDescription className="text-zinc-400">
+              Paste your Hevy Pro API key from{' '}
+              <a
+                href="https://hevy.com/settings?developer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-400 hover:underline"
+              >
+                Hevy developer settings
+              </a>
+              . Keys are stored like other cloud connections and used only to
+              sync your workouts.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="hevy-api-key" className="text-zinc-300">
+              API key
+            </Label>
+            <Input
+              id="hevy-api-key"
+              type="password"
+              autoComplete="off"
+              value={hevyApiKey}
+              onChange={(e) => setHevyApiKey(e.target.value)}
+              placeholder="Your Hevy API key"
+              className="bg-zinc-900 border-zinc-800"
+            />
+            {hevyError ? (
+              <p className="text-sm text-red-400" role="alert">
+                {hevyError}
+              </p>
+            ) : null}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setHevyDialogOpen(false)}
+              disabled={hevySubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void submitHevyConnect()}
+              disabled={hevySubmitting || !hevyApiKey.trim()}
+            >
+              {hevySubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Connecting…
+                </>
+              ) : (
+                'Connect'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

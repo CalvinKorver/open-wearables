@@ -1,0 +1,58 @@
+---
+title: "Hevy integration"
+description: "Connect Hevy Pro workouts to Open Wearables using an API key"
+---
+
+## Overview
+
+Hevy is a strength-training tracker. Open Wearables can **pull workouts** from the [Hevy public API](https://api.hevyapp.com/docs) using a **per-user API key** (Hevy Pro). There is no OAuth redirect: the user pastes their key in the Connect flow (pair page) or you call the REST endpoint from your app.
+
+### Supported data
+
+| Data type | Support |
+|-----------|---------|
+| Workouts (sessions from `/v1/workouts`) | Yes (full session JSON stored; see below) |
+| Routines / templates | No |
+| Webhooks | No |
+| 24/7 summaries (steps, sleep, etc.) | No |
+
+## Prerequisites
+
+- **Hevy Pro** subscription (API access is Pro-only per Hevy)
+- API key from [Hevy developer settings](https://hevy.com/settings?developer)
+
+## Connect in the dashboard (pair page)
+
+1. Open **Connect a device** for your user (`/users/{userId}/pair`).
+2. Choose **Hevy**.
+3. Paste the API key and submit.
+
+Open Wearables validates the key against Hevy, stores it on the user connection, and queues a **workout sync** (default window: last 30 days, same as other pull providers).
+
+### Workout payload and API
+
+Each synced workout keeps the **entire object** returned by Hevy for that session (including `exercises`, nested `sets`, notes, `routine_id`, timestamps, etc.) in the database under `workout_details.provider_extensions` as:
+
+```json
+{ "hevy": { /* raw Hevy workout dict */ } }
+```
+
+The paginated workouts list (`GET /api/v1/users/{user_id}/events/workouts`) includes the same structure on each item as optional `provider_extensions`, so clients can render exercises and sets without an extra call. Other providers leave this field null.
+
+## Connect via API
+
+`POST /api/v1/users/{user_id}/connections/hevy`
+
+- **Auth:** same as other user APIs (`Authorization: Bearer …` developer session, or `X-Open-Wearables-API-Key`).
+- **Body:** `{ "api_key": "<your-hevy-api-key>" }`
+- **Response:** `201` with the connection payload (tokens are never returned in read models).
+
+Disconnect with the generic connection endpoint:
+
+`DELETE /api/v1/users/{user_id}/connections/hevy`
+
+## Limitations
+
+- Hevy may change or discontinue their public API; treat this as best-effort.
+- Duplicate syncs can create duplicate workout rows until deduplication by `external_id` is implemented.
+- Rate limits follow Hevy’s API; large histories require multiple paginated requests.

@@ -11,7 +11,7 @@ from app.schemas.model_crud.activities import (
     EventRecordCreate,
     EventRecordDetailCreate,
 )
-from app.services.providers.api_client import make_authenticated_request
+from app.services.providers.api_client import make_api_key_request, make_authenticated_request
 from app.services.providers.templates.base_oauth import BaseOAuthTemplate
 
 
@@ -24,7 +24,7 @@ class BaseWorkoutsTemplate(ABC):
         connection_repo: UserConnectionRepository,
         provider_name: str,
         api_base_url: str,
-        oauth: "BaseOAuthTemplate",
+        oauth: "BaseOAuthTemplate | None",
     ):
         self.workout_repo = workout_repo
         self.connection_repo = connection_repo
@@ -152,6 +152,19 @@ class BaseWorkoutsTemplate(ABC):
         json_data: dict[str, Any] | None = None,
     ) -> Any:
         """Make authenticated request to vendor API."""
+        if self.oauth is None:
+            return make_api_key_request(
+                db=db,
+                user_id=user_id,
+                connection_repo=self.connection_repo,
+                api_base_url=self.api_base_url,
+                provider_name=self.provider_name,
+                endpoint=endpoint,
+                method=method,
+                params=params,
+                headers=headers,
+                json_data=json_data,
+            )
         return make_authenticated_request(
             db=db,
             user_id=user_id,

@@ -116,6 +116,19 @@ export const healthService = {
   },
 
   /**
+   * Connect Hevy using a Hevy Pro API key (no OAuth redirect).
+   */
+  async connectHevy(
+    userId: string,
+    apiKey: string
+  ): Promise<UserConnection> {
+    return apiClient.post<UserConnection>(
+      API_ENDPOINTS.userConnectionHevy(userId),
+      { api_key: apiKey }
+    );
+  },
+
+  /**
    * Get workouts for a user
    */
   async getWorkouts(

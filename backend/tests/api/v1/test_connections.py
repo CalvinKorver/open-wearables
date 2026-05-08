@@ -548,3 +548,85 @@ class TestDisconnectDeregistration:
         # Assert
         assert response.status_code == 204
         mock_httpx_delete.assert_not_called()
+
+    @patch("app.api.routes.v1.connections.sync_vendor_data.delay")
+    @patch("app.api.routes.v1.connections.httpx.get")
+    def test_connect_hevy_creates_connection(
+        self,
+        mock_httpx_get: MagicMock,
+        mock_sync_delay: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """POST /users/{id}/connections/hevy validates key, stores connection, queues sync."""
+        user = UserFactory()
+        dev_key = ApiKeyFactory()
+        headers = api_key_headers(dev_key.id)
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx_get.return_value = mock_resp
+
+        response = client.post(
+            f"/api/v1/users/{user.id}/connections/hevy",
+            headers=headers,
+            json={"api_key": "hevy-secret-key"},
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["provider"] == "hevy"
+        assert data["status"] == ConnectionStatus.ACTIVE.value
+        mock_sync_delay.assert_called_once()
+        row = db.query(UserConnection).filter_by(user_id=user.id, provider="hevy").one()
+        assert row.access_token == "hevy-secret-key"
+
+    @patch("app.api.routes.v1.connections.sync_vendor_data.delay")
+    @patch("app.api.routes.v1.connections.httpx.get")
+    def test_connect_hevy_updates_existing(
+        self,
+        mock_httpx_get: MagicMock,
+        mock_sync_delay: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """Should overwrite API key on existing Hevy connection."""
+        user = UserFactory()
+        UserConnectionFactory(user=user, provider="hevy", access_token="old-key")
+        dev_key = ApiKeyFactory()
+        headers = api_key_headers(dev_key.id)
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_httpx_get.return_value = mock_resp
+
+        response = client.post(
+            f"/api/v1/users/{user.id}/connections/hevy",
+            headers=headers,
+            json={"api_key": "new-key"},
+        )
+
+        assert response.status_code == 201
+        row = db.query(UserConnection).filter_by(user_id=user.id, provider="hevy").one()
+        assert row.access_token == "new-key"
+
+    @patch("app.api.routes.v1.connections.httpx.get")
+    def test_connect_hevy_user_not_found(
+        self,
+        mock_httpx_get: MagicMock,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """Should not call Hevy when user does not exist."""
+        from uuid import uuid4
+
+        dev_key = ApiKeyFactory()
+        headers = api_key_headers(dev_key.id)
+        missing_id = uuid4()
+
+        response = client.post(
+            f"/api/v1/users/{missing_id}/connections/hevy",
+            headers=headers,
+            json={"api_key": "any"},
+        )
+
+        assert response.status_code == 404
+        mock_httpx_get.assert_not_called()

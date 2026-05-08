@@ -20,8 +20,22 @@ Railway provides the fastest way to get a production Open Wearables instance run
 />
 
 <Tip>
-An admin account is created automatically on first startup (`admin@admin.com` / `your-secure-password`). To use custom credentials, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the **Backend** service before deploying (as shown on the video)
+An admin account is created automatically on first startup (`admin@admin.com` / `your-secure-password`). To use custom credentials, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on the **Backend** service **before** the first successful deploy so the seed picks them up (as shown on the video).
 </Tip>
+
+<Warning>
+**Changing `ADMIN_EMAIL` / `ADMIN_PASSWORD` after deploy does not reset the login.** The seed script `backend/scripts/init/seed_admin.py` only runs when **no** developer row exists. If a developer was already created, new env vars are ignored until you either:
+
+1. **Sign in with the account that was actually seeded** — usually the **original** defaults (`admin@admin.com` / `your-secure-password`) if you did not set custom vars before first boot, then change password while logged in via `POST /api/v1/auth/change-password` (Bearer token required) or the dashboard if available.
+
+2. **Re-seed from env** — Connect to Postgres (Railway **PostgreSQL** service → **Data** / CLI), delete existing admins, then redeploy **Backend**:
+   ```sql
+   DELETE FROM developer;
+   ```
+   On the next Backend start, migrations run and `seed_admin.py` creates one developer using **current** `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
+
+Variable names on the **Backend** service must match what the app expects: **`ADMIN_EMAIL`** and **`ADMIN_PASSWORD`** (wired in `backend/app/config.py` as `admin_email` / `admin_password`).
+</Warning>
 
 ## What gets deployed
 

@@ -21,6 +21,8 @@ export const API_ENDPOINTS = {
   userConnections: (userId: string) => `/api/v1/users/${userId}/connections`,
   userConnectionDisconnect: (userId: string, provider: string) =>
     `/api/v1/users/${userId}/connections/${provider}`,
+  userConnectionHevy: (userId: string) =>
+    `/api/v1/users/${userId}/connections/hevy`,
   userWorkouts: (userId: string) => `/api/v1/users/${userId}/events/workouts`,
   userAppleXmlImport: (userId: string) =>
     `/api/v1/users/${userId}/import/apple/xml/direct`,

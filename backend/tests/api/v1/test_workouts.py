@@ -12,7 +12,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from tests.factories import ApiKeyFactory, DataSourceFactory, EventRecordFactory, UserFactory
+from app.schemas.enums import ProviderName
+from tests.factories import (
+    ApiKeyFactory,
+    DataSourceFactory,
+    EventRecordFactory,
+    UserFactory,
+    WorkoutDetailsFactory,
+)
 from tests.utils import api_key_headers
 
 
@@ -392,3 +399,33 @@ class TestWorkoutsEndpoints:
         assert "start_time" in workout_data
         assert "end_time" in workout_data
         assert "duration_seconds" in workout_data
+        assert "provider_extensions" in workout_data
+
+    def test_get_workouts_includes_provider_extensions(
+        self,
+        client: TestClient,
+        db: Session,
+    ) -> None:
+        """Workout list should echo provider_extensions from workout_details when set."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user, provider=ProviderName.HEVY, source="hevy")
+        workout = EventRecordFactory(mapping=mapping, category="workout", type_="strength_training")
+        ext = {"hevy": {"exercises": [{"title": "Back Squat", "sets": [{"reps": 5, "weight_kg": 100.0}]}]}}
+        WorkoutDetailsFactory(event_record=workout, provider_extensions=ext)
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        now = datetime.now(timezone.utc)
+        start_date = (now - timedelta(days=30)).isoformat()
+        end_date = (now + timedelta(days=1)).isoformat()
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=headers,
+            params={"start_date": start_date, "end_date": end_date},
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        assert data[0]["provider_extensions"] == ext

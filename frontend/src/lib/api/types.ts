@@ -519,6 +519,9 @@ export interface EventRecordResponse {
   elevation_gain_meters?: number | null;
   avg_pace_sec_per_km?: number | null;
 
+  /** Provider-specific blobs (e.g. `{ hevy: { ... } }` from Hevy list workouts). */
+  provider_extensions?: Record<string, unknown> | null;
+
   // Legacy fields (keeping for compatibility if needed, but marked optional)
   user_id?: string;
   provider_id?: string | null;

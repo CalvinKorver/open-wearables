@@ -20,6 +20,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.hevy.strategy import HevyStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
 
@@ -112,6 +113,13 @@ class TestBaseProviderStrategy:
         assert strategy.has_cloud_api is False
         assert strategy.oauth is None
 
+    def test_hevy_has_cloud_api_without_oauth(self) -> None:
+        """Hevy uses API key REST sync; cloud flag is True even without OAuth."""
+        strategy = HevyStrategy()
+
+        assert strategy.has_cloud_api is True
+        assert strategy.oauth is None
+
     def test_icon_url_generation(self) -> None:
         """Should generate correct icon URL path."""
         # Act
@@ -119,9 +127,11 @@ class TestBaseProviderStrategy:
         apple_strategy = AppleStrategy()
         polar_strategy = PolarStrategy()
         suunto_strategy = SuuntoStrategy()
+        hevy_strategy = HevyStrategy()
 
         # Assert
         assert garmin_strategy.icon_url == "/static/provider-icons/garmin.svg"
         assert apple_strategy.icon_url == "/static/provider-icons/apple.svg"
         assert polar_strategy.icon_url == "/static/provider-icons/polar.svg"
         assert suunto_strategy.icon_url == "/static/provider-icons/suunto.svg"
+        assert hevy_strategy.icon_url == "/static/provider-icons/hevy.svg"

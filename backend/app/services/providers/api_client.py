@@ -16,6 +16,32 @@ from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
 
+
+def _get_static_api_key(
+    db: DbSession,
+    user_id: UUID,
+    provider_name: str,
+    connection_repo: UserConnectionRepository,
+) -> str:
+    """Return stored API key / access token without OAuth refresh (Hevy, etc.)."""
+    connection = connection_repo.get_by_user_and_provider(db, user_id, provider_name)
+    if not connection:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"User not connected to {provider_name}",
+        )
+    if not connection.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"No API key available for {provider_name}",
+        )
+    if connection.token_expires_at and connection.token_expires_at < datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Connection credentials expired for {provider_name}",
+        )
+    return connection.access_token
+
 # Rate limiting configuration (Garmin: 100 req / 60s window)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
@@ -237,6 +263,153 @@ def make_authenticated_request(
             )
 
     # Should not reach here, but just in case
+    raise HTTPException(
+        status_code=500,
+        detail=f"Failed to complete request to {provider_name.capitalize()} after retries",
+    )
+
+
+def make_api_key_request(
+    db: DbSession,
+    user_id: UUID,
+    connection_repo: UserConnectionRepository,
+    api_base_url: str,
+    provider_name: str,
+    endpoint: str,
+    method: str = "GET",
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    json_data: dict[str, Any] | None = None,
+    expect_json: bool = True,
+    api_key_header: str = "api-key",
+) -> Any:
+    """HTTP request to a provider that authenticates with a static API key header (not Bearer OAuth)."""
+    api_key = _get_static_api_key(db, user_id, provider_name, connection_repo)
+    request_headers = {
+        api_key_header: api_key,
+        "Accept": "application/json",
+    }
+    if headers:
+        request_headers.update(headers)
+
+    url = f"{api_base_url}{endpoint}"
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = httpx.request(
+                method=method,
+                url=url,
+                headers=request_headers,
+                params=params or {},
+                json=json_data,
+                timeout=30.0,
+            )
+
+            if response.status_code == 429:
+                if attempt < MAX_RETRIES:
+                    backoff_delay = RETRY_BASE_DELAY * (2**attempt)
+                    log_structured(
+                        logger,
+                        "warning",
+                        "Rate limited (429), retrying",
+                        provider_name=provider_name,
+                        attempt=attempt + 1,
+                        max_retries=MAX_RETRIES,
+                        backoff_delay=backoff_delay,
+                    )
+                    time.sleep(backoff_delay)
+                    continue
+                log_structured(
+                    logger,
+                    "error",
+                    "Rate limited (429), max retries exceeded",
+                    provider_name=provider_name,
+                    attempt=attempt + 1,
+                    max_retries=MAX_RETRIES,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"{provider_name.capitalize()} API error: {response.text}",
+                )
+
+            response.raise_for_status()
+
+            if not expect_json:
+                return {
+                    "status_code": response.status_code,
+                    "accepted": response.status_code == 202,
+                }
+
+            result = response.json()
+
+            if isinstance(result, dict):
+                has_error = result.get("error") is not None and result.get("error")
+                has_error_code = "code" in result and result.get("code") not in (200, None)
+
+                if has_error or has_error_code:
+                    error_msg = result.get("message") or result.get("error") or str(result)
+                    log_structured(
+                        logger,
+                        "error",
+                        "API returned error in body",
+                        provider_name=provider_name,
+                        error_msg=error_msg,
+                    )
+                    raise HTTPException(
+                        status_code=result.get("code", 400),
+                        detail=f"{provider_name.capitalize()} API error: {error_msg}",
+                    )
+
+            return result
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < MAX_RETRIES:
+                backoff_delay = RETRY_BASE_DELAY * (2**attempt)
+                log_structured(
+                    logger,
+                    "warning",
+                    "Rate limited (429), retrying",
+                    provider_name=provider_name,
+                    attempt=attempt + 1,
+                    max_retries=MAX_RETRIES,
+                    backoff_delay=backoff_delay,
+                )
+                time.sleep(backoff_delay)
+                continue
+
+            log_structured(
+                logger,
+                "error",
+                "API error",
+                provider_name=provider_name,
+                user_id=str(user_id),
+                error=e.response.text,
+            )
+            if e.response.status_code == 401:
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"{provider_name.capitalize()} API key invalid or revoked.",
+                )
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"{provider_name.capitalize()} API error: {e.response.text}",
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            log_structured(
+                logger,
+                "error",
+                "API request failed",
+                provider_name=provider_name,
+                user_id=str(user_id),
+                error=str(e),
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch data from {provider_name.capitalize()}: {str(e)}",
+            )
+
     raise HTTPException(
         status_code=500,
         detail=f"Failed to complete request to {provider_name.capitalize()} after retries",

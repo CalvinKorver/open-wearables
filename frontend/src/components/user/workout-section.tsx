@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import {
   ChevronDown,
@@ -36,6 +36,252 @@ import {
   dateToTimestamp,
 } from '@/lib/utils/workout';
 import type { EventRecordResponse } from '@/lib/api/types';
+import {
+  computeSessionVolumeLb,
+  displaySetNumber,
+  extractRecordsCount,
+  formatWeightRepsLine,
+  isWarmupSet,
+  parseDurationSecondsFromHevySnapshot,
+  sessionTitleFromHevy,
+} from '@/lib/utils/hevy-workout';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function providerKey(provider: string | undefined): string {
+  return provider?.toLowerCase() ?? '';
+}
+
+/** Hevy-style session + exercises from `provider_extensions.hevy`. */
+function HevyWorkoutExpand({
+  data,
+  durationSeconds,
+}: {
+  data: Record<string, unknown>;
+  durationSeconds: number | null | undefined;
+}) {
+  const title = sessionTitleFromHevy(data);
+  const description =
+    typeof data.description === 'string' ? data.description.trim() : '';
+  const routineId = data.routine_id;
+  const startedAt =
+    (typeof data.start_time === 'string' && data.start_time) ||
+    (typeof data.startTime === 'string' && data.startTime) ||
+    '';
+  const updatedAt =
+    (typeof data.updated_at === 'string' && data.updated_at) ||
+    (typeof data.updatedAt === 'string' && data.updatedAt) ||
+    '';
+
+  const effectiveDuration =
+    durationSeconds !== undefined && durationSeconds !== null
+      ? Number(durationSeconds)
+      : parseDurationSecondsFromHevySnapshot(data);
+
+  const volumeLb = computeSessionVolumeLb(data);
+  const recordsCount = extractRecordsCount(data);
+
+  const exercisesRaw = data.exercises;
+  const exercises = (Array.isArray(exercisesRaw) ? exercisesRaw : []).filter(
+    isRecord
+  );
+
+  const startedAtDate = startedAt ? new Date(startedAt) : null;
+  const updatedAtDate = updatedAt ? new Date(updatedAt) : null;
+  const startedAtLabel =
+    startedAtDate && !Number.isNaN(startedAtDate.getTime())
+      ? `${formatDistanceToNow(startedAtDate, { addSuffix: true })}`
+      : '';
+
+  const { totalSets } = useMemo(() => {
+    let count = 0;
+    for (const ex of exercises) {
+      const setsRaw = ex.sets;
+      const sets = (Array.isArray(setsRaw) ? setsRaw : []).filter(isRecord);
+      count += sets.length;
+    }
+    return { totalSets: count };
+  }, [exercises]);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-white">{title}</h3>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+              {startedAtLabel ? <span>{startedAtLabel}</span> : null}
+              {startedAtDate && !Number.isNaN(startedAtDate.getTime()) ? (
+                <span className="text-zinc-600">
+                  {format(startedAtDate, 'MMM d, yyyy')}
+                </span>
+              ) : null}
+              {exercises.length > 0 ? (
+                <span className="text-zinc-600">
+                  {exercises.length} exercise{exercises.length === 1 ? '' : 's'}
+                  {totalSets > 0
+                    ? ` • ${totalSets} set${totalSets === 1 ? '' : 's'}`
+                    : ''}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-3 gap-4">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Duration
+            </p>
+            <p className="text-sm font-medium text-white">
+              {effectiveDuration !== null &&
+              effectiveDuration !== undefined &&
+              !Number.isNaN(effectiveDuration) &&
+              effectiveDuration >= 0
+                ? formatDuration(effectiveDuration)
+                : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Volume
+            </p>
+            <p className="text-sm font-medium text-white">
+              {volumeLb !== null ? `${volumeLb.toLocaleString()} lbs` : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              Records
+            </p>
+            <p className="text-sm font-medium text-white">
+              {recordsCount !== null ? String(recordsCount) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {(description || routineId !== undefined || updatedAt) && (
+          <div className="mt-4 space-y-1 border-t border-zinc-800 pt-4 text-xs text-zinc-500">
+            {description ? (
+              <p className="whitespace-pre-wrap text-zinc-400">{description}</p>
+            ) : null}
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {routineId !== undefined &&
+              routineId !== null &&
+              String(routineId) !== '' ? (
+                <span>
+                  Routine:{' '}
+                  <span className="font-mono text-zinc-300">
+                    {String(routineId)}
+                  </span>
+                </span>
+              ) : null}
+              {updatedAt ? (
+                <span>
+                  Updated:{' '}
+                  <span className="text-zinc-300">
+                    {updatedAtDate && !Number.isNaN(updatedAtDate.getTime())
+                      ? format(updatedAtDate, 'MMM d, yyyy h:mm a')
+                      : updatedAt}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {exercises.length === 0 ? (
+        <p className="text-xs text-zinc-500">
+          No exercises in this Hevy snapshot.
+        </p>
+      ) : (
+        <div className="space-y-5">
+          {exercises.map((ex, idx) => {
+            const exerciseTitle =
+              typeof ex.title === 'string' && ex.title.trim()
+                ? ex.title
+                : `Exercise ${idx + 1}`;
+            const notes =
+              typeof ex.notes === 'string' && ex.notes.trim() ? ex.notes : '';
+            const setsRaw = ex.sets;
+            const sets = (Array.isArray(setsRaw) ? setsRaw : []).filter(
+              isRecord
+            );
+
+            return (
+              <div
+                key={`${exerciseTitle}-${idx}`}
+                className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950/40"
+              >
+                <div className="border-b border-zinc-800 bg-zinc-900/50 px-3 py-2">
+                  <p className="text-sm font-medium text-white">
+                    {exerciseTitle}
+                  </p>
+                  {notes ? (
+                    <p className="mt-1 text-xs whitespace-pre-wrap text-zinc-500">
+                      {notes}
+                    </p>
+                  ) : null}
+                </div>
+                {sets.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-zinc-500">
+                    No sets logged.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-zinc-800 text-left text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                          <th className="px-3 py-2">Sets</th>
+                          <th className="px-3 py-2">Weight &amp; reps</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sets.map((s, sIdx) => {
+                          const warmup = isWarmupSet(s);
+                          const setNum = displaySetNumber(s, sIdx);
+                          const alternating =
+                            sIdx % 2 === 0
+                              ? 'bg-zinc-900/50'
+                              : 'bg-zinc-950/40';
+                          return (
+                            <tr
+                              key={sIdx}
+                              className={`border-b border-zinc-800/80 text-zinc-200 last:border-0 ${alternating}`}
+                            >
+                              <td className="px-3 py-2 align-middle">
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="text-zinc-300">
+                                    {setNum}
+                                  </span>
+                                  {warmup ? (
+                                    <span className="rounded bg-orange-500/20 px-1 text-[10px] font-semibold text-orange-400">
+                                      W
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 align-middle">
+                                {formatWeightRepsLine(s)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface WorkoutSectionProps {
   userId: string;
@@ -78,6 +324,10 @@ function WorkoutRow({
   );
 
   const workoutDate = workout.start_time || workout.start_datetime;
+  const hevyRaw = workout.provider_extensions?.hevy;
+  const hevySnapshot = isRecord(hevyRaw) ? hevyRaw : undefined;
+  const isHevyProvider = providerKey(workout.source?.provider) === 'hevy';
+  const rowTitle = hevySnapshot ? sessionTitleFromHevy(hevySnapshot) : style.label;
 
   return (
     <div className="border border-zinc-800 rounded-lg overflow-hidden bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors">
@@ -97,13 +347,15 @@ function WorkoutRow({
         <div className="flex-1 min-w-0 flex items-center">
           {/* Type & Date */}
           <div className="w-32 flex-shrink-0">
-            <p className="text-sm font-medium text-white">{style.label}</p>
+            <p className="text-sm font-medium text-white line-clamp-2">
+              {rowTitle}
+            </p>
             <p className="text-xs text-zinc-500">
               {workoutDate ? format(new Date(workoutDate), 'MMM d, yyyy') : '-'}
             </p>
             {workout.source?.provider && (
               <SourceBadge
-                provider={workout.source.provider}
+                provider={providerKey(workout.source.provider)}
                 className="mt-1"
               />
             )}
@@ -161,6 +413,17 @@ function WorkoutRow({
       {/* Expanded details */}
       {isExpanded && (
         <div className="px-4 pb-4 pt-2 border-t border-zinc-800 space-y-4">
+          {hevySnapshot ? (
+            <HevyWorkoutExpand
+              data={hevySnapshot}
+              durationSeconds={workout.duration_seconds}
+            />
+          ) : isHevyProvider ? (
+            <p className="text-xs text-zinc-500">
+              No exercise details stored for this workout.
+            </p>
+          ) : null}
+
           {/* Heart Rate During Workout Chart */}
           <div>
             <h4 className="text-xs font-medium text-zinc-400 mb-3 uppercase tracking-wider">

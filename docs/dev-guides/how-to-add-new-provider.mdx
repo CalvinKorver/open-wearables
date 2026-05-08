@@ -81,6 +81,10 @@ backend/app/services/providers/suunto/
 Use lowercase for the provider name in directory and file names to maintain consistency with existing providers.
 </Tip>
 
+<Note>
+**API key REST providers (example: Hevy):** Omit `oauth.py` and set `oauth = None` on the strategy. Override `has_cloud_api` to return `True` so scheduled sync includes the provider. Implement `BaseWorkoutsTemplate` with `oauth=None` so `_make_api_request` uses `make_api_key_request` (static `api-key` header). Add a dedicated FastAPI route to validate and store the user API key on `UserConnection`, then enqueue `sync_vendor_data`. See [Hevy](/providers/hevy) and `backend/app/services/providers/hevy/`.
+</Note>
+
 ---
 
 ## Step 2: Implement the Strategy Class

@@ -45,6 +45,9 @@ class TestProviderNameFromSourceString:
             ("Fitbit", ProviderName.FITBIT),
             ("FITBIT", ProviderName.FITBIT),
             ("fitbit_sense", ProviderName.FITBIT),
+            # Hevy
+            ("hevy_app", ProviderName.HEVY),
+            ("my_hevy_workout", ProviderName.HEVY),
             # Unknown cases
             ("unknown_device", ProviderName.UNKNOWN),
             ("", ProviderName.UNKNOWN),

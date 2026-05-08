@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -26,6 +26,10 @@ class Workout(BaseModel):
     max_heart_rate_bpm: int | None = None
     avg_pace_sec_per_km: int | float | None = None
     elevation_gain_meters: float | None = None
+    provider_extensions: dict[str, Any] | None = Field(
+        default=None,
+        description="Provider-specific workout payload (e.g. hevy snapshot with exercises/sets).",
+    )
 
 
 class WorkoutDetailed(Workout):

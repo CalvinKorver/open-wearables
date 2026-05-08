@@ -1,4 +1,7 @@
-from sqlalchemy.orm import Mapped
+from typing import Any
+
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.mappings import FKEventRecordDetail, numeric_5_2, numeric_10_3
 
@@ -28,3 +31,6 @@ class WorkoutDetails(EventRecordDetail):
     average_watts: Mapped[numeric_10_3 | None]
     elev_high: Mapped[numeric_10_3 | None]
     elev_low: Mapped[numeric_10_3 | None]
+
+    #: Provider-specific payloads (e.g. {"hevy": {...}}) for rich workout UIs.
+    provider_extensions: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

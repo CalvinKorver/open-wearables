@@ -12,6 +12,7 @@ const PROVIDER_STYLES: Record<
   oura: { bg: 'bg-violet-500/20', text: 'text-violet-400', label: 'Oura' },
   whoop: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'WHOOP' },
   strava: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Strava' },
+  hevy: { bg: 'bg-sky-500/20', text: 'text-sky-400', label: 'Hevy' },
   'google-fit': {
     bg: 'bg-green-500/20',
     text: 'text-green-400',

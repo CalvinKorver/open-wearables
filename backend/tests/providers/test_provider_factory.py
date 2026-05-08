@@ -15,6 +15,7 @@ from app.services.providers.apple.strategy import AppleStrategy
 from app.services.providers.base_strategy import BaseProviderStrategy
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.garmin.strategy import GarminStrategy
+from app.services.providers.hevy.strategy import HevyStrategy
 from app.services.providers.oura.strategy import OuraStrategy
 from app.services.providers.polar.strategy import PolarStrategy
 from app.services.providers.suunto.strategy import SuuntoStrategy
@@ -222,6 +223,17 @@ class TestProviderFactory:
 
         # Assert
         assert strategy.data_247 is not None
+
+    def test_get_provider_hevy(self, factory: ProviderFactory) -> None:
+        """Should return HevyStrategy with API-key cloud sync (no OAuth object)."""
+        strategy = factory.get_provider("hevy")
+
+        assert isinstance(strategy, HevyStrategy)
+        assert isinstance(strategy, BaseProviderStrategy)
+        assert strategy.name == "hevy"
+        assert strategy.oauth is None
+        assert strategy.has_cloud_api is True
+        assert strategy.workouts is not None
 
     def test_multiple_calls_create_new_instances(
         self,

@@ -34,6 +34,7 @@
             "pages": [
               "providers/supported",
               "providers/coverage",
+              "providers/hevy",
               "providers/garmin-api-integration",
               "providers/garmin-data-pipeline"
             ]

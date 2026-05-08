@@ -1,7 +1,8 @@
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .sleep import SleepStage
 
@@ -40,6 +41,11 @@ class EventRecordDetailBase(BaseModel):
     is_nap: bool | None = None
 
     sleep_stages: list[SleepStage] | None = None
+
+    provider_extensions: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional provider-specific JSON (e.g. full Hevy workout snapshot).",
+    )
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):
