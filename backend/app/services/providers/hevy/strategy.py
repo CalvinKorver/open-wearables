@@ -27,7 +27,7 @@ class HevyStrategy(BaseProviderStrategy):
 
     @property
     def capabilities(self) -> ProviderCapabilities:
-        return ProviderCapabilities(supports_pull=True, supports_push=False)
+        return ProviderCapabilities(rest_pull=True)
 
     @property
     def has_cloud_api(self) -> bool:
