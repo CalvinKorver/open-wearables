@@ -4,8 +4,9 @@ import logging
 
 from fastmcp import FastMCP
 
+from app.config import settings
 from app.services.api_client import client
-from app.utils import normalize_datetime
+from app.utils import local_time_fields_for_range, normalize_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,11 @@ async def get_workout_events(
                     "type": "running",
                     "start_datetime": "2026-01-11T07:00:00+00:00",
                     "end_datetime": "2026-01-11T07:45:00+00:00",
+                    "start_local": "2026-01-10T23:00:00-08:00",
+                    "end_local": "2026-01-10T23:45:00-08:00",
+                    "local_start_time": "11:00 PM",
+                    "local_end_time": "11:45 PM",
+                    "zone_offset": "-08:00",
                     "duration_seconds": 2700,
                     "distance_meters": 7500.0,
                     "calories_kcal": 520.0,
@@ -84,6 +90,10 @@ async def get_workout_events(
         - The 'source' field indicates which wearable provided the data (garmin, whoop, etc.)
         - Common workout types: running, cycling, swimming, strength_training, walking,
           hiking, yoga, hiit, rowing, elliptical, pilates
+        - For when the workout happened in the user's local day, use start_local, end_local,
+          local_start_time, and local_end_time (not raw start_datetime/end_datetime alone).
+          zone_offset is the capture-time offset from the device when present; otherwise local
+          fields use the MCP USER_LOCAL_TIMEZONE / BRIEFING_TIMEZONE fallback.
     """
     try:
         # Fetch user details
@@ -131,12 +141,24 @@ async def get_workout_events(
             workout_types[w_type] = workout_types.get(w_type, 0) + 1
 
             source = record.get("source", {})
+            start_n = normalize_datetime(record.get("start_time"))
+            end_n = normalize_datetime(record.get("end_time"))
+            zo = record.get("zone_offset")
+            zo_str = zo if isinstance(zo, str) else None
+            local_fields = local_time_fields_for_range(
+                start_n,
+                end_n,
+                zo_str,
+                settings.user_local_timezone,
+            )
             records.append(
                 {
                     "id": str(record.get("id")),
                     "type": w_type,
-                    "start_datetime": normalize_datetime(record.get("start_time")),
-                    "end_datetime": normalize_datetime(record.get("end_time")),
+                    "start_datetime": start_n,
+                    "end_datetime": end_n,
+                    **local_fields,
+                    "zone_offset": zo_str,
                     "duration_seconds": duration,
                     "distance_meters": distance,
                     "calories_kcal": cals,

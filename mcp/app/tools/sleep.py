@@ -4,8 +4,9 @@ import logging
 
 from fastmcp import FastMCP
 
+from app.config import settings
 from app.services.api_client import client
-from app.utils import normalize_datetime
+from app.utils import local_time_fields_for_range, normalize_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,10 @@ async def get_sleep_summary(
                     "date": "2026-01-11",
                     "start_datetime": "2026-01-11T23:15:00+00:00",
                     "end_datetime": "2026-01-12T07:30:00+00:00",
+                    "start_local": "2026-01-11T15:15:00-08:00",
+                    "end_local": "2026-01-11T23:30:00-08:00",
+                    "local_start_time": "3:15 PM",
+                    "local_end_time": "11:30 PM",
                     "duration_minutes": 495,
                     "source": "whoop"
                 }
@@ -70,6 +75,9 @@ async def get_sleep_summary(
         - The 'date' field is based on end_datetime (when the user woke up), not when they fell asleep.
         - start_datetime and end_datetime are full ISO 8601 timestamps. Sleep typically
           spans midnight, so end_datetime is often the day after start_datetime.
+        - For bedtime and wake time in the user's local clock, use start_local, end_local,
+          local_start_time, and local_end_time (derived using MCP USER_LOCAL_TIMEZONE /
+          BRIEFING_TIMEZONE; sleep summaries do not include per-record zone_offset).
         - The 'source' field indicates which wearable provided the data (whoop, garmin, etc.)
     """
     try:
@@ -103,11 +111,20 @@ async def get_sleep_summary(
                 durations.append(duration)
 
             source = record.get("source", {})
+            start_n = normalize_datetime(record.get("start_time"))
+            end_n = normalize_datetime(record.get("end_time"))
+            local_fields = local_time_fields_for_range(
+                start_n,
+                end_n,
+                None,
+                settings.user_local_timezone,
+            )
             records.append(
                 {
                     "date": str(record.get("date")),
-                    "start_datetime": normalize_datetime(record.get("start_time")),
-                    "end_datetime": normalize_datetime(record.get("end_time")),
+                    "start_datetime": start_n,
+                    "end_datetime": end_n,
+                    **local_fields,
                     "duration_minutes": duration,
                     "source": source.get("provider") if isinstance(source, dict) else source,
                 }

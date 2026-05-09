@@ -171,6 +171,35 @@ services:
       start_period: 10s
     restart: on-failure
 
+  coach:
+    build:
+      context: .
+      dockerfile: coach/Dockerfile
+    container_name: coach__open-wearables
+    image: open-wearables-coach:latest
+    pull_policy: never
+    env_file:
+      - ./coach/config/.env
+    environment:
+      - OPEN_WEARABLES_API_URL=http://app:8000
+      - OW_MCP_DIR=/opt/mcp
+      - COACH_DB_PATH=/data/coach.db
+    volumes:
+      - coach_data:/data
+    depends_on:
+      - app
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./coach/app
+          target: /opt/coach/app
+        - action: sync+restart
+          path: ./coach/config/.env
+          target: /opt/coach/config/.env
+        - action: rebuild
+          path: ./coach/pyproject.toml
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
@@ -201,3 +230,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  coach_data:

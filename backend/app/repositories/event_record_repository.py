@@ -635,6 +635,7 @@ class EventRecordRepository(
         user_id: UUID,
         start_date: datetime,
         end_date: datetime,
+        calendar_tz: str,
     ) -> list[dict]:
         """Get daily workout aggregates including elevation, distance, and energy.
 
@@ -644,9 +645,10 @@ class EventRecordRepository(
         - workout_date, source, device_model
         - elevation_meters, distance_meters, energy_burned_kcal
         """
+        local_day = cast(func.timezone(calendar_tz, self.model.end_datetime), Date)
         results = (
             db_session.query(
-                cast(self.model.end_datetime, Date).label("workout_date"),
+                local_day.label("workout_date"),
                 DataSource.source,
                 DataSource.device_model,
                 # Sum elevation gain for all workouts on that day
@@ -663,14 +665,14 @@ class EventRecordRepository(
                 DataSource.user_id == user_id,
                 self.model.category == "workout",
                 self.model.end_datetime >= start_date,
-                cast(self.model.end_datetime, Date) < cast(end_date, Date),
+                self.model.end_datetime < end_date,
             )
             .group_by(
-                cast(self.model.end_datetime, Date),
+                local_day,
                 DataSource.source,
                 DataSource.device_model,
             )
-            .order_by(asc(cast(self.model.end_datetime, Date)))
+            .order_by(asc(local_day))
             .all()
         )
 

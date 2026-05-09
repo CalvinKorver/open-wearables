@@ -329,6 +329,7 @@ class DataPointSeriesArchiveRepository:
         start_date: datetime,
         end_date: datetime,
         series_type_ids: list[int],
+        calendar_tz: str,
     ) -> list[dict]:
         """Query the archive table for daily activity aggregates.
 
@@ -355,9 +356,11 @@ class DataPointSeriesArchiveRepository:
         if isinstance(end_ts, datetime) and end_ts.tzinfo is None:
             end_ts = end_ts.replace(tzinfo=timezone.utc)
 
+        local_day = cast(func.timezone(calendar_tz, DataPointSeriesArchive.bucket_start_at), Date)
+
         results = (
             db.query(
-                cast(DataPointSeriesArchive.bucket_start_at, Date).label("activity_date"),
+                local_day.label("activity_date"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 func.sum(
@@ -412,7 +415,7 @@ class DataPointSeriesArchiveRepository:
                 DataPointSeriesArchive.series_type_definition_id.in_(series_type_ids),
             )
             .group_by(
-                cast(DataPointSeriesArchive.bucket_start_at, Date),
+                local_day,
                 DataSource.source,
                 DataSource.device_model,
             )

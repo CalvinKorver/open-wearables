@@ -1,6 +1,7 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import BeforeValidator, Field
 
@@ -21,17 +22,24 @@ def is_calendar_date_only(dt_str: str) -> bool:
 
 
 def parse_events_range_datetime(dt_str: str, *, bound: Literal["start", "end"]) -> datetime:
-    """Parse ``start_date`` / ``end_date`` for event list endpoints.
+    """Parse ``start_date`` / ``end_date`` for event list and summary endpoints.
 
-    Calendar dates are interpreted in UTC. For ``bound=="end"``, the value is the
-    **exclusive** upper bound at the start of the day after the given calendar day,
-    matching repository filters ``start_datetime >= start`` and ``end_datetime < end``.
+    Plain ``YYYY-MM-DD`` values are interpreted as **calendar days** in
+    ``settings.default_calendar_timezone`` (default America/Los_Angeles), then converted
+    to UTC. For ``bound=="end"``, the result is the **exclusive** upper bound (start of
+    the following local calendar day as UTC), matching filters
+    ``start_datetime >= start`` and ``end_datetime < end``.
     """
     if is_calendar_date_only(dt_str):
-        day_start = datetime.fromisoformat(dt_str).replace(tzinfo=timezone.utc)
-        if bound == "end":
-            return day_start + timedelta(days=1)
-        return day_start
+        from app.config import settings
+
+        tz = ZoneInfo(settings.default_calendar_timezone)
+        d = date.fromisoformat(dt_str)
+        if bound == "start":
+            local_start = datetime.combine(d, time.min, tzinfo=tz)
+            return local_start.astimezone(timezone.utc)
+        local_next = datetime.combine(d + timedelta(days=1), time.min, tzinfo=tz)
+        return local_next.astimezone(timezone.utc)
     return parse_query_datetime(dt_str)
 
 

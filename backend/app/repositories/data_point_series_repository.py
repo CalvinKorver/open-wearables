@@ -482,6 +482,7 @@ class DataPointSeriesRepository(
         user_id: UUID,
         start_date: datetime,
         end_date: datetime,
+        calendar_tz: str,
     ) -> list[ActivityAggregateResult]:
         """Get daily activity aggregates from time-series data.
 
@@ -501,10 +502,12 @@ class DataPointSeriesRepository(
         distance_id = get_series_type_id(SeriesType.distance_walking_running)
         flights_id = get_series_type_id(SeriesType.flights_climbed)
 
+        local_day = cast(func.timezone(calendar_tz, self.model.recorded_at), Date)
+
         # Build aggregation query
         results = (
             db_session.query(
-                cast(self.model.recorded_at, Date).label("activity_date"),
+                local_day.label("activity_date"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 # Steps - sum for the day
@@ -542,17 +545,17 @@ class DataPointSeriesRepository(
             .filter(
                 DataSource.user_id == user_id,
                 self.model.recorded_at >= start_date,
-                cast(self.model.recorded_at, Date) < cast(end_date, Date),
+                self.model.recorded_at < end_date,
                 self.model.series_type_definition_id.in_(
                     [steps_id, energy_id, basal_energy_id, hr_id, distance_id, flights_id]
                 ),
             )
             .group_by(
-                cast(self.model.recorded_at, Date),
+                local_day,
                 DataSource.source,
                 DataSource.device_model,
             )
-            .order_by(asc(cast(self.model.recorded_at, Date)))
+            .order_by(asc(local_day))
             .all()
         )
 
@@ -584,6 +587,7 @@ class DataPointSeriesRepository(
         user_id: UUID,
         start_date: datetime,
         end_date: datetime,
+        calendar_tz: str,
         active_threshold: int = 30,
     ) -> list[ActiveMinutesResult]:
         """Get daily active/sedentary minutes from step data.
@@ -604,11 +608,12 @@ class DataPointSeriesRepository(
 
         # Create minute bucket expression using literal 'minute' text
         minute_trunc = func.date_trunc(literal_column("'minute'"), self.model.recorded_at)
+        local_day = cast(func.timezone(calendar_tz, self.model.recorded_at), Date)
 
         # Subquery: bucket step data by minute and sum steps per minute
         minute_bucket = (
             db_session.query(
-                cast(self.model.recorded_at, Date).label("activity_date"),
+                local_day.label("activity_date"),
                 DataSource.source,
                 DataSource.device_model,
                 minute_trunc.label("minute_bucket"),
@@ -618,11 +623,11 @@ class DataPointSeriesRepository(
             .filter(
                 DataSource.user_id == user_id,
                 self.model.recorded_at >= start_date,
-                cast(self.model.recorded_at, Date) < cast(end_date, Date),
+                self.model.recorded_at < end_date,
                 self.model.series_type_definition_id == steps_id,
             )
             .group_by(
-                cast(self.model.recorded_at, Date),
+                local_day,
                 DataSource.source,
                 DataSource.device_model,
                 minute_trunc,
@@ -676,6 +681,7 @@ class DataPointSeriesRepository(
         user_id: UUID,
         start_date: datetime,
         end_date: datetime,
+        calendar_tz: str,
         light_min: int,
         light_max: int,
         moderate_max: int,
@@ -700,11 +706,12 @@ class DataPointSeriesRepository(
 
         # Create minute bucket expression
         minute_trunc = func.date_trunc(literal_column("'minute'"), self.model.recorded_at)
+        local_day = cast(func.timezone(calendar_tz, self.model.recorded_at), Date)
 
         # Subquery: bucket HR data by minute and get avg HR per minute
         minute_bucket = (
             db_session.query(
-                cast(self.model.recorded_at, Date).label("activity_date"),
+                local_day.label("activity_date"),
                 DataSource.source,
                 DataSource.device_model,
                 minute_trunc.label("minute_bucket"),
@@ -714,11 +721,11 @@ class DataPointSeriesRepository(
             .filter(
                 DataSource.user_id == user_id,
                 self.model.recorded_at >= start_date,
-                cast(self.model.recorded_at, Date) < cast(end_date, Date),
+                self.model.recorded_at < end_date,
                 self.model.series_type_definition_id == hr_id,
             )
             .group_by(
-                cast(self.model.recorded_at, Date),
+                local_day,
                 DataSource.source,
                 DataSource.device_model,
                 minute_trunc,

@@ -30,16 +30,26 @@ class TestParseQueryDatetime:
 
 
 class TestParseEventsRangeDatetime:
-    """Calendar-day bounds for /events/* list endpoints."""
+    """Calendar-day bounds use default_calendar_timezone (America/Los_Angeles)."""
 
-    def test_date_only_start_is_utc_midnight(self) -> None:
+    def test_date_only_start_is_local_midnight_as_utc(self) -> None:
+        # 2026-05-07 00:00 PDT -> 07:00 UTC
         assert parse_events_range_datetime("2026-05-07", bound="start") == datetime(
-            2026, 5, 7, 0, 0, 0, tzinfo=timezone.utc
+            2026, 5, 7, 7, 0, 0, tzinfo=timezone.utc
         )
 
-    def test_date_only_end_is_exclusive_next_day(self) -> None:
+    def test_date_only_end_is_exclusive_next_local_day(self) -> None:
+        # 2026-05-08 00:00 PDT -> 07:00 UTC
         assert parse_events_range_datetime("2026-05-07", bound="end") == datetime(
-            2026, 5, 8, 0, 0, 0, tzinfo=timezone.utc
+            2026, 5, 8, 7, 0, 0, tzinfo=timezone.utc
+        )
+
+    def test_date_only_winter_pst_offset(self) -> None:
+        assert parse_events_range_datetime("2026-01-15", bound="start") == datetime(
+            2026, 1, 15, 8, 0, 0, tzinfo=timezone.utc
+        )
+        assert parse_events_range_datetime("2026-01-15", bound="end") == datetime(
+            2026, 1, 16, 8, 0, 0, tzinfo=timezone.utc
         )
 
     def test_iso_datetime_passthrough_uses_parse_query_datetime(self) -> None:

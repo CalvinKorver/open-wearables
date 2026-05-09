@@ -2,8 +2,9 @@
 
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, SecretStr, ValidationError
+from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,9 +27,30 @@ class Settings(BaseSettings):
         description="API key for authenticating with Open Wearables backend",
     )
 
+    user_local_timezone: str = Field(
+        default="America/Los_Angeles",
+        description=(
+            "IANA timezone used for start_local/end_local when a record has no zone_offset "
+            "(match Coach BRIEFING_TIMEZONE when both are deployed for the same user)"
+        ),
+        validation_alias=AliasChoices(
+            "USER_LOCAL_TIMEZONE",
+            "BRIEFING_TIMEZONE",
+        ),
+    )
+
     # Optional settings
     log_level: str = Field(default="INFO", description="Logging level")
     request_timeout: int = Field(default=30, description="HTTP request timeout in seconds")
+
+    @field_validator("user_local_timezone")
+    @classmethod
+    def validate_user_local_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as e:
+            raise ValueError(f"Unknown timezone: {v}") from e
+        return v
 
     def is_configured(self) -> bool:
         """Check if the API key is configured."""

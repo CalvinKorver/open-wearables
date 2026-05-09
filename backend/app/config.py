@@ -4,6 +4,7 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 if TYPE_CHECKING:
     from app.schemas.enums import ProviderName
@@ -97,6 +98,13 @@ class Settings(BaseSettings):
 
     # API SETTINGS
     api_base_url: str = "http://localhost:8000"
+
+    # Plain YYYY-MM-DD on /events/* and /summaries/* expands to [local midnight, next local midnight)
+    # in this zone, then converted to UTC for queries. Defaults to Pacific for current product scope.
+    default_calendar_timezone: str = Field(
+        default="America/Los_Angeles",
+        description="IANA timezone for calendar-date API query parameters",
+    )
 
     # SUUNTO OAUTH SETTINGS
     suunto_client_id: str | None = None
@@ -256,6 +264,15 @@ class Settings(BaseSettings):
             auth_part = f"{self.redis_username}@"
 
         return f"redis://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+
+    @field_validator("default_calendar_timezone")
+    @classmethod
+    def validate_default_calendar_timezone(cls, v: str) -> str:
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as e:
+            raise ValueError(f"Unknown timezone: {v}") from e
+        return v
 
     # Decryptor for encrypted fields
     @field_validator("*", mode="after")

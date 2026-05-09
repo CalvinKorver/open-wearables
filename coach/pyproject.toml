@@ -1,19 +1,23 @@
 [project]
-name = "open-wearables-mcp"
+name = "open-wearables-coach"
 version = "0.1.0"
-description = "MCP server for Open Wearables - query wearable health data via AI assistants"
+description = "Personal AI coach that sends a daily Telegram briefing of yesterday's workouts and health metrics from Open Wearables"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "anthropic>=0.39.0",
+    "apscheduler>=3.10.4",
     "fastmcp>=2.0.0",
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "sqlalchemy>=2.0.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
 code-quality = [
     "pre-commit>=4.3.0",
@@ -23,6 +27,7 @@ code-quality = [
 
 [project.scripts]
 start = "app.main:main"
+brief = "app.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -31,16 +36,19 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 120
 target-version = 'py313'
-exclude = ["README.md", ".python-version", "LICENSE", "app/models/"]
+exclude = ["README.md", ".python-version", "LICENSE"]
 
 [tool.ruff.lint]
 select = [
     "I",     # isort
     "F",     # pyflakes
-    "FAST",  # FastApi
     "ANN",   # flake8-annotations
     "ASYNC", # flake8-async
     "COM",   # flake8-commas

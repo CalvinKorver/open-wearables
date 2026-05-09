@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from logging import Logger, getLogger
 from uuid import UUID
 
+from app.config import settings
 from app.database import DbSession
 from app.models import DataPointSeries, EventRecord, ProviderPriority, User
 from app.repositories import EventRecordRepository, ProviderPriorityRepository
@@ -225,7 +226,12 @@ class SummariesService:
         ]
 
         archive_results = self.archive_repo.get_daily_activity_aggregates_from_archive(
-            db_session, user_id, start_date, end_date, series_type_ids
+            db_session,
+            user_id,
+            start_date,
+            end_date,
+            series_type_ids,
+            settings.default_calendar_timezone,
         )
 
         if not archive_results:
@@ -394,7 +400,9 @@ class SummariesService:
         self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
 
         # Get aggregated data from time-series repository (live data)
-        results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start_date, end_date)
+        results = self.data_point_repo.get_daily_activity_aggregates(
+            db_session, user_id, start_date, end_date, settings.default_calendar_timezone
+        )
 
         # Merge archived data when archival is enabled
         results = self._merge_archive_activity(db_session, user_id, start_date, end_date, results)
@@ -404,7 +412,7 @@ class SummariesService:
 
         # Get workout aggregates (elevation, distance, energy from workouts)
         workout_aggregates = self.event_record_repo.get_daily_workout_aggregates(
-            db_session, user_id, start_date, end_date
+            db_session, user_id, start_date, end_date, settings.default_calendar_timezone
         )
 
         # Build lookup dict for workout data by (date, provider, device)
@@ -415,7 +423,12 @@ class SummariesService:
 
         # Get active/sedentary minutes from step data
         activity_minutes = self.data_point_repo.get_daily_active_minutes(
-            db_session, user_id, start_date, end_date, active_threshold=ACTIVE_STEPS_THRESHOLD
+            db_session,
+            user_id,
+            start_date,
+            end_date,
+            settings.default_calendar_timezone,
+            active_threshold=ACTIVE_STEPS_THRESHOLD,
         )
 
         # Build lookup for activity minutes
@@ -433,6 +446,7 @@ class SummariesService:
             user_id,
             start_date,
             end_date,
+            settings.default_calendar_timezone,
             light_min=hr_zones["light_min"],
             light_max=hr_zones["light_max"],
             moderate_max=hr_zones["moderate_max"],
