@@ -179,6 +179,31 @@ class TestWorkoutsEndpoints:
         assert len(data) == 1
         assert data[0]["id"] == str(recent_workout.id)
 
+    def test_get_workouts_date_only_same_calendar_day(self, client: TestClient, db: Session) -> None:
+        """YYYY-MM-DD for both bounds must include workouts on that UTC calendar day."""
+        user = UserFactory()
+        mapping = DataSourceFactory(user=user)
+        start = datetime(2026, 5, 7, 15, 30, 0, tzinfo=timezone.utc)
+        workout = EventRecordFactory(
+            mapping=mapping,
+            category="workout",
+            start_datetime=start,
+            end_datetime=start + timedelta(hours=1),
+        )
+        api_key = ApiKeyFactory()
+        headers = api_key_headers(api_key.id)
+
+        response = client.get(
+            f"/api/v1/users/{user.id}/events/workouts",
+            headers=headers,
+            params={"start_date": "2026-05-07", "end_date": "2026-05-07", "limit": 100},
+        )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert len(data) == 1
+        assert data[0]["id"] == str(workout.id)
+
     def test_get_workouts_pagination(self, client: TestClient, db: Session) -> None:
         """Test pagination with skip and limit parameters."""
         # Arrange

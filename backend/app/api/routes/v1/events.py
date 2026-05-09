@@ -12,7 +12,7 @@ from app.schemas.responses.activity import (
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.event_record_service import event_record_service
-from app.utils.dates import parse_query_datetime
+from app.utils.dates import parse_events_range_datetime
 
 router = APIRouter()
 
@@ -30,8 +30,8 @@ def list_workouts(
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
-        start_datetime=parse_query_datetime(start_date),
-        end_datetime=parse_query_datetime(end_date),
+        start_datetime=parse_events_range_datetime(start_date, bound="start"),
+        end_datetime=parse_events_range_datetime(end_date, bound="end"),
         cursor=cursor,
         limit=limit,
         record_type=record_type,
@@ -51,8 +51,8 @@ def list_sleep_sessions(
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
     params = EventRecordQueryParams(
-        start_datetime=parse_query_datetime(start_date),
-        end_datetime=parse_query_datetime(end_date),
+        start_datetime=parse_events_range_datetime(start_date, bound="start"),
+        end_datetime=parse_events_range_datetime(end_date, bound="end"),
         cursor=cursor,
         limit=limit,
     )

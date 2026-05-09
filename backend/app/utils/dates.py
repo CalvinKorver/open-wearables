@@ -1,9 +1,38 @@
-from datetime import datetime, timezone
-from typing import Annotated
+import re
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Literal
 
 from pydantic import BeforeValidator, Field
 
 from app.utils.exceptions import DatetimeParseError
+
+_CALENDAR_DATE_ONLY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def is_calendar_date_only(dt_str: str) -> bool:
+    """True if ``dt_str`` is exactly ``YYYY-MM-DD`` (no time component)."""
+    if not _CALENDAR_DATE_ONLY.match(dt_str):
+        return False
+    try:
+        datetime.fromisoformat(dt_str)
+    except ValueError:
+        return False
+    return True
+
+
+def parse_events_range_datetime(dt_str: str, *, bound: Literal["start", "end"]) -> datetime:
+    """Parse ``start_date`` / ``end_date`` for event list endpoints.
+
+    Calendar dates are interpreted in UTC. For ``bound=="end"``, the value is the
+    **exclusive** upper bound at the start of the day after the given calendar day,
+    matching repository filters ``start_datetime >= start`` and ``end_datetime < end``.
+    """
+    if is_calendar_date_only(dt_str):
+        day_start = datetime.fromisoformat(dt_str).replace(tzinfo=timezone.utc)
+        if bound == "end":
+            return day_start + timedelta(days=1)
+        return day_start
+    return parse_query_datetime(dt_str)
 
 
 def parse_query_datetime(dt_str: str) -> datetime:
