@@ -4,6 +4,8 @@ import logging
 from datetime import date
 
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from app.config import settings
 from app.prompts import prompts_router
@@ -122,12 +124,30 @@ mcp.mount(timeseries_router)
 # Mount prompts
 mcp.mount(prompts_router)
 
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(_request: Request) -> Response:
+    """Liveness probe without Bearer auth (see MCPBearerAuthMiddleware exempt paths)."""
+    return JSONResponse({"status": "ok"})
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def root_health(_request: Request) -> Response:
+    """Minimal probe for platforms that default health checks to GET /."""
+    return JSONResponse({"status": "ok"})
+
+
 logger.info(f"Open Wearables MCP server initialized. API URL: {settings.open_wearables_api_url}")
 
 
 def main() -> None:
-    """Entry point for the MCP server."""
-    mcp.run()
+    """Entry point for the MCP server (stdio by default; streamable-http when configured)."""
+    if settings.mcp_transport == "streamable-http":
+        from app.http_server import run_streamable_http_server
+
+        run_streamable_http_server(mcp)
+    else:
+        mcp.run()
 
 
 if __name__ == "__main__":

@@ -178,12 +178,31 @@ Get sleep summaries for a user within a date range.
 }
 ```
 
+## Remote MCP (HTTPS / Claude Managed Agents)
+
+For **Claude Managed Agents**, deploy this package as a **separate HTTPS service** using MCP **streamable HTTP** (not stdio). Use:
+
+```bash
+uv run start-http
+```
+
+Requirements:
+
+- **`MCP_BEARER_TOKEN`**: shared with Anthropic vault credential type **`static_bearer`** (`token` field); clients send `Authorization: Bearer …`.
+- **`OPEN_WEARABLES_API_KEY`**: stays server-side for REST calls to **`OPEN_WEARABLES_API_URL`** (do not use it as the MCP Bearer token).
+
+Defaults: MCP endpoint path **`/mcp`**, health checks **`GET /health`** and **`GET /`** without Bearer.
+
+See the docs: **Remote MCP (Managed Agents)** (`mcp-server/managed-agents-remote` on docs.openwearables.io) and [`mcp/Dockerfile`](Dockerfile) for container deployment.
+
 ## Architecture
 
 ```
 mcp/
 ├── app/
-│   ├── main.py           # FastMCP entry point
+│   ├── main.py           # FastMCP entry point (stdio or streamable-http)
+│   ├── http_server.py    # start-http / streamable HTTP + Uvicorn
+│   ├── bearer_auth.py    # Bearer gate for remote MCP
 │   ├── config.py         # Settings (API URL, API key)
 │   ├── tools/
 │   │   ├── users.py      # get_users tool

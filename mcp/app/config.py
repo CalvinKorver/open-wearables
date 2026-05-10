@@ -2,9 +2,10 @@
 
 import sys
 from pathlib import Path
+from typing import Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator
+from pydantic import AliasChoices, Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,9 +40,40 @@ class Settings(BaseSettings):
         ),
     )
 
+    mcp_transport: Literal["stdio", "streamable-http"] = Field(
+        default="stdio",
+        description="stdio for Cursor/coach subprocess MCP; streamable-http for remote HTTPS (Managed Agents)",
+    )
+
+    mcp_http_host: str = Field(
+        default="0.0.0.0",
+        description="Bind address for streamable HTTP MCP",
+    )
+
+    mcp_http_port: int = Field(
+        default=8765,
+        description="Listen port when PORT env is unset (Railway sets PORT)",
+    )
+
+    mcp_http_path: str = Field(
+        default="/mcp",
+        description="URL path for MCP streamable HTTP endpoint (must match vault mcp_server_url)",
+    )
+
+    mcp_bearer_token: SecretStr = Field(
+        default=SecretStr(""),
+        description="Bearer token for authenticating clients to streamable HTTP MCP (vault static_bearer)",
+    )
+
     # Optional settings
     log_level: str = Field(default="INFO", description="Logging level")
     request_timeout: int = Field(default=30, description="HTTP request timeout in seconds")
+
+    @model_validator(mode="after")
+    def require_bearer_for_streamable_http(self) -> Self:
+        if self.mcp_transport == "streamable-http" and not self.mcp_bearer_token.get_secret_value():
+            raise ValueError("MCP_BEARER_TOKEN is required when MCP_TRANSPORT=streamable-http")
+        return self
 
     @field_validator("user_local_timezone")
     @classmethod

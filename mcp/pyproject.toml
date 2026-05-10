@@ -23,6 +23,7 @@ code-quality = [
 
 [project.scripts]
 start = "app.main:main"
+start-http = "app.http_server:http_main"
 
 [build-system]
 requires = ["hatchling"]

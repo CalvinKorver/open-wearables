@@ -200,6 +200,26 @@ services:
           path: ./coach/pyproject.toml
     restart: unless-stopped
 
+  mcp-http:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    container_name: mcp-http__open-wearables
+    image: open-wearables-mcp-http:latest
+    pull_policy: never
+    ports:
+      - "${MCP_HTTP_PORT:-8765}:8765"
+    env_file:
+      - ./mcp/config/.env
+    environment:
+      OPEN_WEARABLES_API_URL: http://app:8000
+      MCP_TRANSPORT: streamable-http
+      MCP_HTTP_HOST: "0.0.0.0"
+      MCP_HTTP_PORT: "8765"
+    depends_on:
+      - app
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

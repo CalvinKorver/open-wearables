@@ -1,0 +1,64 @@
+---
+title: "Remote MCP (Managed Agents)"
+sidebarTitle: "Managed Agents (HTTPS)"
+description: "Deploy the Open Wearables MCP with streamable HTTP and Bearer auth for Claude Managed Agents."
+keywords:
+  [
+    "anthropic managed agents",
+    "remote mcp",
+    "streamable http mcp",
+    "open wearables mcp deployment",
+  ]
+---
+
+The standard Open Wearables MCP runs over **stdio** (Claude Desktop, Cursor, the Coach service). **Claude Managed Agents** connect to **remote MCP servers** over **HTTPS** using the MCP **streamable HTTP** transport and optional **vault** credentials.
+
+This guide describes the dedicated **`streamable-http`** deployment: same tools as the stdio server, different transport and authentication at the MCP edge.
+
+## Architecture
+
+- **Public URL**: Your MCP service exposes `https://your-host/mcp` (default path is `/mcp`; configurable via `MCP_HTTP_PATH`).
+- **Vault (`static_bearer`)**: Anthropic stores a fixed token. At session runtime it is matched to your MCP URL (`mcp_server_url`) and injected toward your MCP server.
+- **Bearer gate**: This deployment requires `Authorization: Bearer <token>` on MCP HTTP requests, where `<token>` equals **`MCP_BEARER_TOKEN`** in your container environment (same value as the vault `token` field).
+- **Open Wearables API**: The MCP process still calls your backend with **`OPEN_WEARABLES_API_URL`** and **`X-Open-Wearables-API-Key`**. That API key stays **only** on the MCP server; it is **not** the Managed Agents vault secret.
+
+Health probes **`GET /health`** and **`GET /`** respond without a Bearer token so platforms like Railway can health-check the container.
+
+## Deploy (example: Railway)
+
+1. Create a **new Railway service** from this repository using **`mcp/Dockerfile`** at the repo root.
+2. Set environment variables:
+
+   | Variable | Purpose |
+   | --- | --- |
+   | `OPEN_WEARABLES_API_URL` | HTTPS base URL of your Open Wearables API (no `/mcp` suffix). |
+   | `OPEN_WEARABLES_API_KEY` | Valid OW API key for REST calls. |
+   | `MCP_BEARER_TOKEN` | Long random secret; copy into Anthropic vault `static_bearer.token`. |
+   | `MCP_TRANSPORT` | `streamable-http` (optional if you use the Docker `CMD` that runs `start-http`). |
+   | `PORT` | Railway sets this automatically; the server listens on `PORT` when set. |
+
+3. Note the public HTTPS origin. Your MCP endpoint URL for Anthropic is:
+
+   `https://<railway-host>/mcp`
+
+   unless you changed `MCP_HTTP_PATH`.
+
+## Configure Claude Managed Agents
+
+Use the latest [Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview) docs (`managed-agents-2026-04-01` beta).
+
+1. **Agent**: Declare `mcp_servers` with `type: "url"`, a unique `name`, and `url` set to the **exact** public MCP URL (including path). Add a tool entry `type: "mcp_toolset"` with `mcp_server_name` matching that name.
+2. **Vault**: Create a vault credential with `type: "static_bearer"`, `mcp_server_url` equal to the **same** URL string, and `token` equal to **`MCP_BEARER_TOKEN`**.
+3. **Session**: Pass `vault_ids` when creating the session so the runtime can authenticate to your MCP.
+
+If URLs diverge (scheme, host, path, or trailing slash), vault matching fails or tools stay unauthorized.
+
+## Local smoke test (Docker Compose)
+
+The root **`docker-compose.yml`** includes an optional **`mcp-http`** service. Add **`MCP_BEARER_TOKEN`** (and a valid `OPEN_WEARABLES_API_KEY`) to `mcp/config/.env`, then start the stack and open `http://localhost:8765/health`. MCP traffic goes to `http://localhost:8765/mcp` with a Bearer header.
+
+## References
+
+- [Anthropic MCP connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)
+- [Anthropic vaults / static_bearer](https://platform.claude.com/docs/en/managed-agents/vaults)
+- [FastMCP HTTP deployment](https://gofastmcp.com/deployment/http)
