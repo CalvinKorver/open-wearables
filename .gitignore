@@ -164,6 +164,13 @@ volumes
 *.json
 *.xml
 
+# Coach: local runtime DB and ad-hoc secrets (never commit)
+coach/coach.db
+coach/key
+
+# Personal VS Code multi-root workspaces under docs
+docs/deployment/*.code-workspace
+
 # AI instruction local overrides (not committed)
 CLAUDE.local.md
 .claude/
