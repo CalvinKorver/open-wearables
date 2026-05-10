@@ -26,7 +26,11 @@ Health probes **`GET /health`** and **`GET /`** respond without a Bearer token s
 
 ## Deploy (example: Railway)
 
-1. Create a **new Railway service** from this repository using **`mcp/Dockerfile`** at the repo root.
+Step-by-step UI instructions: **[Deploy MCP on Railway](/deployment/railway-mcp)** (root directory **`mcp`**, env vars, health check).
+
+Short version:
+
+1. Create a **new Railway service** from this repository using **`mcp/Dockerfile`** with **Root Directory** set to **`mcp`**.
 2. Set environment variables:
 
    | Variable | Purpose |

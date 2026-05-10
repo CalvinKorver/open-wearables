@@ -1,0 +1,112 @@
+---
+title: "Deploy MCP on Railway"
+sidebarTitle: "Railway (MCP)"
+description: "Run the Open Wearables streamable HTTP MCP as a separate Railway service for Claude Managed Agents."
+keywords:
+  [
+    "railway mcp",
+    "open wearables mcp deploy",
+    "managed agents mcp railway",
+  ]
+---
+
+The Open Wearables **remote MCP** (`streamable-http` + Bearer auth) ships as a **standalone Docker image** built from **`mcp/Dockerfile`**. Deploy it as a **new service** in the same Railway project as your backend (or another project), with its **own** public URL.
+
+## Prerequisites
+
+- Railway project with a running **Open Wearables backend** (you need a public **`OPEN_WEARABLES_API_URL`** and an **`OPEN_WEARABLES_API_KEY`**).
+- GitHub repo connected to Railway (your fork is fine).
+
+## 1. Create the service
+
+<Steps>
+  <Step title="Add a service">
+    In your Railway project, click **New** → **GitHub Repo** (or **Empty Service** → connect repo), choose the repository that contains **`mcp/Dockerfile`**.
+  </Step>
+
+  <Step title="Set root directory">
+    Open the new service → **Settings** → **Build** → **Root Directory** → set **`mcp`**.
+
+    Railway should detect **`Dockerfile`** inside that folder and build with:
+
+    - Context: `mcp/`
+    - File: `mcp/Dockerfile`
+  </Step>
+
+  <Step title="Expose HTTP">
+    **Settings** → **Networking** → **Generate Domain** (or attach a custom domain).
+
+    Your MCP endpoint for Anthropic will be:
+
+    `https://<this-service-domain>/mcp`
+
+    unless you change **`MCP_HTTP_PATH`** (default **`/mcp`**).
+  </Step>
+</Steps>
+
+## 2. Environment variables
+
+In the MCP service → **Variables**, add:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| **`OPEN_WEARABLES_API_URL`** | Yes | Public backend base URL, e.g. `https://backend-production-xxxx.up.railway.app` (no `/mcp`). |
+| **`OPEN_WEARABLES_API_KEY`** | Yes | Valid API key; MCP sends **`X-Open-Wearables-API-Key`** to the backend. |
+| **`MCP_BEARER_TOKEN`** | Yes | Long random secret; same value as Anthropic vault **`static_bearer`** **`token`**. |
+
+Railway injects **`PORT`** automatically — the server listens on **`PORT`** (you do not set **`MCP_HTTP_PORT`** unless you know you need it).
+
+Optional:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| **`MCP_HTTP_PATH`** | `/mcp` | Must match the path in your public MCP URL and vault **`mcp_server_url`**. |
+| **`MCP_HTTP_HOST`** | `0.0.0.0` | Bind address inside the container. |
+| **`USER_LOCAL_TIMEZONE`** | `America/Los_Angeles` | **`start_local` / `end_local`** when workouts lack **`zone_offset`**. |
+| **`LOG_LEVEL`** | `INFO` | Logging. |
+| **`REQUEST_TIMEOUT`** | `30` | Backend HTTP timeout (seconds). |
+
+Do **not** commit a production `.env` with these values into git. Keep secrets in Railway **Variables** (or references / secrets stores).
+
+## 3. Health check (recommended)
+
+Configure the service health check to **`GET /health`** on the public URL (path **`/health`** only — no Bearer header required).
+
+## 4. Deploy and verify
+
+1. Trigger a deploy; wait for **Active**.
+2. Browser or curl:
+
+   ```bash
+   curl -sS https://<your-mcp-service>.up.railway.app/health
+   ```
+
+   Expect `{"status":"ok"}`.
+
+3. Confirm **`/mcp`** returns **401** without **`Authorization`** and accepts Bearer when set:
+
+   ```bash
+   curl -sS -o /dev/null -w "%{http_code}\n" https://<host>/mcp
+   curl -sS -o /dev/null -w "%{http_code}\n" \
+     -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+     https://<host>/mcp
+   ```
+
+## 5. Claude Managed Agents
+
+Use the **exact** HTTPS MCP URL (including **`/mcp`**) in:
+
+- Agent **`mcp_servers[].url`**
+- Vault credential **`mcp_server_url`**
+- Session **`vault_ids`** with **`static_bearer`** **`token`** = **`MCP_BEARER_TOKEN`**
+
+See **[Remote MCP (Managed Agents)](/mcp-server/managed-agents-remote)** for the full connector checklist.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---------|--------|
+| Build fails “file not found” | **Root Directory** must be **`mcp`** so `COPY pyproject.toml` resolves. |
+| Crash on boot “MCP_BEARER_TOKEN required” | Variable missing or typo; must be **uncommented** in Railway (no `#`). |
+| Tools fail / 401 to backend | **`OPEN_WEARABLES_API_URL`** and **`OPEN_WEARABLES_API_KEY`** on the **MCP** service, not only on Backend. |
+| Managed Agents MCP auth errors | **`mcp_server_url`** must match **`https://…/mcp`** character-for-character with the agent URL. |

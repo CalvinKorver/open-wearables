@@ -193,7 +193,7 @@ Requirements:
 
 Defaults: MCP endpoint path **`/mcp`**, health checks **`GET /health`** and **`GET /`** without Bearer.
 
-See the docs: **Remote MCP (Managed Agents)** (`mcp-server/managed-agents-remote` on docs.openwearables.io) and [`mcp/Dockerfile`](Dockerfile) for container deployment.
+See the docs: **Remote MCP (Managed Agents)** (`mcp-server/managed-agents-remote`) and **Deploy MCP on Railway** (`deployment/railway-mcp`) on docs.openwearables.io; [`mcp/Dockerfile`](Dockerfile) builds the image.
 
 ## Architecture
 

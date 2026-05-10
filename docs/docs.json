@@ -136,7 +136,8 @@
           {
             "group": "Deployment",
             "pages": [
-              "deployment/railway"
+              "deployment/railway",
+              "deployment/railway-mcp"
             ]
           },
           {
