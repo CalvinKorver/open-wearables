@@ -7,7 +7,7 @@ from fastmcp import FastMCP
 from starlette.middleware import Middleware
 
 from app.bearer_auth import MCPBearerAuthMiddleware
-from app.config import settings
+from app.config import Settings, settings
 
 
 def _listen_port() -> int:
@@ -21,9 +21,12 @@ def run_streamable_http_server(server: FastMCP) -> None:
     """Run MCP with streamable HTTP transport and Bearer gate."""
     token = settings.mcp_bearer_token.get_secret_value()
     if not token:
+        env_file = Settings.model_config.get("env_file")
         raise RuntimeError(
             "MCP_BEARER_TOKEN is required for streamable HTTP. "
-            "Set it in the environment (and use the same value in your Managed Agents vault static_bearer)."
+            "Add it to your MCP env file or export it in your shell "
+            f"(same token as Managed Agents vault static_bearer). "
+            f"Example in `{env_file}`: MCP_BEARER_TOKEN=<long-random-secret>"
         )
 
     middleware = [
