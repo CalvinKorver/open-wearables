@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     mcp_bearer_token: SecretStr = Field(
         default=SecretStr(""),
         description="Bearer token for authenticating clients to streamable HTTP MCP (vault static_bearer)",
+        validation_alias=AliasChoices("MCP_BEARER_TOKEN"),
     )
 
     # Optional settings

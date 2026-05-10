@@ -24,9 +24,10 @@ def run_streamable_http_server(server: FastMCP) -> None:
         env_file = Settings.model_config.get("env_file")
         raise RuntimeError(
             "MCP_BEARER_TOKEN is required for streamable HTTP. "
-            "Add it to your MCP env file or export it in your shell "
+            "Add an uncommented line to your MCP env file or export it in your shell "
             f"(same token as Managed Agents vault static_bearer). "
-            f"Example in `{env_file}`: MCP_BEARER_TOKEN=<long-random-secret>"
+            f"File is `{env_file}` — line must look like: MCP_BEARER_TOKEN=<long-random-secret> "
+            "(no leading #)."
         )
 
     middleware = [
