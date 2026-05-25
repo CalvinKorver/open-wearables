@@ -10,7 +10,11 @@ keywords:
   ]
 ---
 
-The Open Wearables **remote MCP** (`streamable-http` + Bearer auth) ships as a **standalone Docker image** built from **`mcp/Dockerfile`**. Deploy it as a **new service** in the same Railway project as your backend (or another project), with its **own** public URL.
+The Open Wearables **remote MCP** (`streamable-http`) ships as a **standalone Docker image** built from **`mcp/Dockerfile`**. Deploy it as a **new service** in the same Railway project as your backend (or another project), with its **own** public URL.
+
+<Note>
+  **Two services if you need both integrations:** use one Railway service with **`MCP_AUTH_MODE=bearer`** for [Managed Agents](/mcp-server/managed-agents-remote) and a **second** service with **`MCP_AUTH_MODE=oauth`** for the [Claude custom connector](/mcp-server/claude-custom-connector). A single container cannot serve both auth modes.
+</Note>
 
 ## Prerequisites
 

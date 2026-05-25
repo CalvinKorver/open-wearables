@@ -157,7 +157,10 @@ jobs:
         run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Install dependencies
         working-directory: mcp
-        run: uv sync --group code-quality
+        run: uv sync --group dev --group code-quality
+      - name: Run tests
+        working-directory: mcp
+        run: uv run pytest -v
       - name: Run linter
         working-directory: mcp
         run: uv run ruff check

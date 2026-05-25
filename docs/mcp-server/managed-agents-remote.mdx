@@ -11,58 +11,224 @@ keywords:
   ]
 ---
 
-The standard Open Wearables MCP runs over **stdio** (Claude Desktop, Cursor, the Coach service). **Claude Managed Agents** connect to **remote MCP servers** over **HTTPS** using the MCP **streamable HTTP** transport and optional **vault** credentials.
+The standard Open Wearables MCP runs over **stdio** (Claude Desktop, Cursor, the Coach service). **Claude Managed Agents** connect to **remote MCP servers** over **HTTPS** using the MCP **streamable HTTP** transport and **vault** credentials.
 
-This guide describes the dedicated **`streamable-http`** deployment: same tools as the stdio server, different transport and authentication at the MCP edge.
+<Note>
+  This is different from the **Claude custom connector** ([OAuth on mobile/web](/mcp-server/claude-custom-connector)) and from **Claude Desktop** ([local stdio](/mcp-server/claude-desktop)).
+</Note>
+
+## Prerequisites
+
+- Public **HTTPS** deployment of Open Wearables **backend** and **MCP** services
+- A valid **`OPEN_WEARABLES_API_KEY`** on the MCP server
+- Anthropic API access with the **`managed-agents-2026-04-01`** beta ([Managed Agents overview](https://platform.claude.com/docs/en/managed-agents/overview))
+- A Managed Agents **environment** (`environment_id`) for session creation
 
 ## Architecture
 
-- **Public URL**: Your MCP service exposes `https://your-host/mcp` (default path is `/mcp`; configurable via `MCP_HTTP_PATH`).
-- **Vault (`static_bearer`)**: Anthropic stores a fixed token. At session runtime it is matched to your MCP URL (`mcp_server_url`) and injected toward your MCP server.
-- **Bearer gate**: This deployment requires `Authorization: Bearer <token>` on MCP HTTP requests, where `<token>` equals **`MCP_BEARER_TOKEN`** in your container environment (same value as the vault `token` field).
-- **Open Wearables API**: The MCP process still calls your backend with **`OPEN_WEARABLES_API_URL`** and **`X-Open-Wearables-API-Key`**. That API key stays **only** on the MCP server; it is **not** the Managed Agents vault secret.
+```mermaid
+sequenceDiagram
+  participant Anthropic as Anthropic_runtime
+  participant MCP as MCP_HTTPS_bearer
+  participant API as OpenWearables_API
+
+  Anthropic->>MCP: MCP + Bearer from vault
+  MCP->>API: REST + X-Open-Wearables-API-Key
+  API-->>MCP: Health data
+  MCP-->>Anthropic: Tool results
+```
+
+- **Public URL**: `https://<your-host>/mcp` (default path **`/mcp`**; configurable via `MCP_HTTP_PATH`).
+- **Vault (`static_bearer`)**: Anthropic stores a fixed token keyed by **`mcp_server_url`**. At session runtime it is injected as `Authorization: Bearer …`.
+- **Bearer gate**: Token must match **`MCP_BEARER_TOKEN`** on the MCP server (same value as vault **`token`**).
+- **Open Wearables API**: MCP calls your backend with **`OPEN_WEARABLES_API_URL`** and **`X-Open-Wearables-API-Key`**. That API key stays **only** on the MCP server; it is **not** the vault secret.
 
 Health probes **`GET /health`** and **`GET /`** respond without a Bearer token so platforms like Railway can health-check the container.
 
-## Deploy (example: Railway)
+## 1. Deploy the MCP service
 
-Step-by-step UI instructions: **[Deploy MCP on Railway](/deployment/railway-mcp)** (root directory **`mcp`**, env vars, health check).
+Follow **[Deploy MCP on Railway](/deployment/railway-mcp)** with **Root Directory** `mcp`.
 
-Short version:
+Use a **dedicated Railway service** with **`MCP_AUTH_MODE=bearer`**. If you also need the Claude **custom connector**, deploy a **second** MCP service with **`MCP_AUTH_MODE=oauth`** — one container cannot serve both auth modes at once.
 
-1. Create a **new Railway service** from this repository using **`mcp/Dockerfile`** with **Root Directory** set to **`mcp`**.
-2. Set environment variables:
+### Environment variables
 
-   | Variable | Purpose |
-   | --- | --- |
-   | `OPEN_WEARABLES_API_URL` | HTTPS base URL of your Open Wearables API (no `/mcp` suffix). |
-   | `OPEN_WEARABLES_API_KEY` | Valid OW API key for REST calls. |
-   | `MCP_BEARER_TOKEN` | Long random secret; copy into Anthropic vault `static_bearer.token`. |
-   | `MCP_TRANSPORT` | `streamable-http` (optional if you use the Docker `CMD` that runs `start-http`). |
-   | `PORT` | Railway sets this automatically; the server listens on `PORT` when set. |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MCP_TRANSPORT` | Yes | `streamable-http` (Docker `start-http` CMD) |
+| `MCP_AUTH_MODE` | Yes | `bearer` |
+| `MCP_BEARER_TOKEN` | Yes | Long random secret; same value as vault `static_bearer.token` |
+| `OPEN_WEARABLES_API_URL` | Yes | Public backend base URL (no `/mcp` suffix) |
+| `OPEN_WEARABLES_API_KEY` | Yes | API key for tool calls (stays on server) |
+| `PORT` | Auto | Railway sets this; server listens on `PORT` when present |
 
-3. Note the public HTTPS origin. Your MCP endpoint URL for Anthropic is:
+Optional: `MCP_HTTP_PATH`, `USER_LOCAL_TIMEZONE`, `LOG_LEVEL`, `REQUEST_TIMEOUT` — see [Railway MCP deploy](/deployment/railway-mcp).
 
-   `https://<railway-host>/mcp`
+Your **agent and vault URL** must be exactly:
 
-   unless you changed `MCP_HTTP_PATH`.
+```
+https://<mcp-public-host>/mcp
+```
 
-## Configure Claude Managed Agents
+## 2. Verify the MCP endpoint
 
-Use the latest [Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview) docs (`managed-agents-2026-04-01` beta).
+```bash
+curl -sS https://<mcp-host>/health
+curl -sS -o /dev/null -w "%{http_code}\n" https://<mcp-host>/mcp
+curl -sS -o /dev/null -w "%{http_code}\n" \
+  -H "Authorization: Bearer $MCP_BEARER_TOKEN" \
+  https://<mcp-host>/mcp
+```
 
-1. **Agent**: Declare `mcp_servers` with `type: "url"`, a unique `name`, and `url` set to the **exact** public MCP URL (including path). Add a tool entry `type: "mcp_toolset"` with `mcp_server_name` matching that name.
-2. **Vault**: Create a vault credential with `type: "static_bearer"`, `mcp_server_url` equal to the **same** URL string, and `token` equal to **`MCP_BEARER_TOKEN`**.
-3. **Session**: Pass `vault_ids` when creating the session so the runtime can authenticate to your MCP.
+Expect health `{"status":"ok"}`, **401** on `/mcp` without Bearer, and a non-401 response with the correct Bearer token.
 
-If URLs diverge (scheme, host, path, or trailing slash), vault matching fails or tools stay unauthorized.
+## 3. Configure Claude Managed Agents
+
+All API calls need:
+
+```bash
+-H "x-api-key: $ANTHROPIC_API_KEY"
+-H "anthropic-version: 2023-06-01"
+-H "anthropic-beta: managed-agents-2026-04-01"
+```
+
+Set `MCP_URL` to your exact public MCP URL (example below).
+
+### Create a vault
+
+```bash
+vault_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/vaults \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  -d '{"display_name": "Open Wearables user"}' | jq -r '.id')
+```
+
+### Add static_bearer credential
+
+`mcp_server_url` must match the agent URL **character-for-character** (scheme, host, path, trailing slash).
+
+```bash
+MCP_URL="https://<mcp-host>/mcp"
+
+curl --fail-with-body -sS "https://api.anthropic.com/v1/vaults/$vault_id/credentials" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  -d "$(jq -n --arg url "$MCP_URL" --arg token "$MCP_BEARER_TOKEN" '{
+    "display_name": "Open Wearables MCP",
+    "auth": {
+      "type": "static_bearer",
+      "mcp_server_url": $url,
+      "token": $token
+    }
+  }')"
+```
+
+### Create an agent
+
+```bash
+agent_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/agents \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  -d "$(jq -n --arg url "$MCP_URL" '{
+    "name": "Open Wearables Health",
+    "model": "claude-opus-4-7",
+    "mcp_servers": [
+      {"type": "url", "name": "open_wearables", "url": $url}
+    ],
+    "tools": [
+      {"type": "agent_toolset_20260401"},
+      {"type": "mcp_toolset", "mcp_server_name": "open_wearables"}
+    ]
+  }')" | jq -r '.id')
+```
+
+### Optional: limit which MCP tools are enabled
+
+By default all tools from the server are enabled. To allow only specific tools:
+
+```json
+{
+  "type": "mcp_toolset",
+  "mcp_server_name": "open_wearables",
+  "default_config": { "enabled": false },
+  "configs": [
+    { "name": "get_users", "enabled": true },
+    { "name": "get_sleep_summary", "enabled": true },
+    { "name": "get_activity_summary", "enabled": true },
+    { "name": "get_workout_events", "enabled": true },
+    { "name": "get_timeseries", "enabled": true }
+  ]
+}
+```
+
+Available tool names: `get_users`, `get_activity_summary`, `get_sleep_summary`, `get_workout_events`, `get_timeseries`.
+
+### Create a session
+
+You need an **`environment_id`** from the Managed Agents environments API. Pass **`vault_ids`** so the runtime can authenticate to your MCP.
+
+```bash
+session_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/sessions \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: managed-agents-2026-04-01" \
+  -H "content-type: application/json" \
+  -d "$(jq -n --arg agent "$agent_id" --arg env "$ENVIRONMENT_ID" --arg vault "$vault_id" '{
+    "agent": $agent,
+    "environment_id": $env,
+    "vault_ids": [$vault]
+  }')" | jq -r '.id')
+```
+
+Session creation does not validate MCP connectivity upfront. Watch the session event stream for `session.error` with `mcp_authentication_failed_error` or `mcp_connection_failed_error` (see [MCP connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)).
+
+## 4. End-to-end test plan
+
+Use this checklist after deploy and API setup:
+
+1. **Deploy** MCP with `MCP_AUTH_MODE=bearer`, public `OPEN_WEARABLES_API_URL`, and valid `OPEN_WEARABLES_API_KEY`.
+2. **Verify curl** — health OK; `/mcp` 401 without Bearer; non-401 with Bearer (section 2).
+3. **Create** vault, `static_bearer` credential (`mcp_server_url` = agent URL), agent, and session with `vault_ids` and `environment_id`.
+4. **Run a prompt** in the session, e.g. *"Who can I query health data for?"*
+5. **Expect** `get_users` (or equivalent) with no `mcp_authentication_failed_error` in session events.
+6. **Confirm** API key scope — users returned match what your `OPEN_WEARABLES_API_KEY` can access.
 
 ## Local smoke test (Docker Compose)
 
-The root **`docker-compose.yml`** includes an optional **`mcp-http`** service. Add **`MCP_BEARER_TOKEN`** (and a valid `OPEN_WEARABLES_API_KEY`) to `mcp/config/.env`, then start the stack and open `http://localhost:8765/health`. MCP traffic goes to `http://localhost:8765/mcp` with a Bearer header.
+The root **`docker-compose.yml`** **`mcp-http`** service sets **`MCP_AUTH_MODE=bearer`**. Add **`MCP_BEARER_TOKEN`** and **`OPEN_WEARABLES_API_KEY`** to `mcp/config/.env`, then:
 
-## References
+```bash
+docker compose up -d mcp-http
+curl -sS http://localhost:8765/health
+curl -sS -H "Authorization: Bearer $MCP_BEARER_TOKEN" http://localhost:8765/mcp
+```
 
+## Firewall
+
+Managed Agents connect from Anthropic's cloud. Allow [Anthropic egress IPs](https://platform.claude.com/docs/en/api/ip-addresses) if you restrict inbound traffic.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---------|--------|
+| `mcp_authentication_failed_error` | Vault `mcp_server_url` matches agent `url` exactly; vault `token` = `MCP_BEARER_TOKEN` |
+| `mcp_connection_failed_error` | MCP URL is HTTPS and reachable; firewall allows Anthropic IPs |
+| Crash on boot "MCP_BEARER_TOKEN required" | Set `MCP_AUTH_MODE=bearer` and uncomment `MCP_BEARER_TOKEN` in env |
+| Tools fail / 401 to backend | `OPEN_WEARABLES_API_URL` and `OPEN_WEARABLES_API_KEY` on the **MCP** service |
+| MCP tools missing in session | Agent includes `mcp_toolset` with `mcp_server_name` matching `mcp_servers[].name` |
+| Session has no MCP auth | `vault_ids` passed at session creation |
+| Wrong users returned | `OPEN_WEARABLES_API_KEY` scope (personal vs team) |
+
+## Related
+
+- [Deploy MCP on Railway](/deployment/railway-mcp)
+- [Claude custom connector (OAuth)](/mcp-server/claude-custom-connector)
 - [Anthropic MCP connector](https://platform.claude.com/docs/en/managed-agents/mcp-connector)
 - [Anthropic vaults / static_bearer](https://platform.claude.com/docs/en/managed-agents/vaults)
 - [FastMCP HTTP deployment](https://gofastmcp.com/deployment/http)

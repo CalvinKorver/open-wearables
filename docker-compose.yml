@@ -214,6 +214,7 @@ services:
     environment:
       OPEN_WEARABLES_API_URL: http://app:8000
       MCP_TRANSPORT: streamable-http
+      MCP_AUTH_MODE: bearer
       MCP_HTTP_HOST: "0.0.0.0"
       MCP_HTTP_PORT: "8765"
     depends_on:
