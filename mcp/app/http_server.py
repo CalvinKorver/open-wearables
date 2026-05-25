@@ -1,4 +1,4 @@
-"""Streamable HTTP MCP server entry (Claude Managed Agents, remote MCP URLs)."""
+"""Streamable HTTP MCP server entry (Claude custom connector OAuth, Managed Agents bearer)."""
 
 import asyncio
 import os
@@ -18,21 +18,19 @@ def _listen_port() -> int:
 
 
 def run_streamable_http_server(server: FastMCP) -> None:
-    """Run MCP with streamable HTTP transport and Bearer gate."""
-    token = settings.mcp_bearer_token.get_secret_value()
-    if not token:
-        env_file = Settings.model_config.get("env_file")
-        raise RuntimeError(
-            "MCP_BEARER_TOKEN is required for streamable HTTP. "
-            "Add an uncommented line to your MCP env file or export it in your shell "
-            f"(same token as Managed Agents vault static_bearer). "
-            f"File is `{env_file}` — line must look like: MCP_BEARER_TOKEN=<long-random-secret> "
-            "(no leading #)."
-        )
+    """Run MCP with streamable HTTP transport."""
+    middleware: list[Middleware] | None = None
 
-    middleware = [
-        Middleware(MCPBearerAuthMiddleware, bearer_token=token),
-    ]
+    if settings.mcp_auth_mode == "bearer":
+        token = settings.mcp_bearer_token.get_secret_value()
+        if not token:
+            env_file = Settings.model_config.get("env_file")
+            raise RuntimeError(
+                "MCP_BEARER_TOKEN is required when MCP_AUTH_MODE=bearer. "
+                f"File is `{env_file}` — line must look like: MCP_BEARER_TOKEN=<long-random-secret> "
+                "(no leading #)."
+            )
+        middleware = [Middleware(MCPBearerAuthMiddleware, bearer_token=token)]
 
     async def _serve() -> None:
         await server.run_http_async(

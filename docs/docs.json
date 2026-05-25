@@ -104,6 +104,7 @@
             "pages": [
               "mcp-server/index",
               "mcp-server/claude-desktop",
+              "mcp-server/claude-custom-connector",
               "mcp-server/cursor",
               "mcp-server/managed-agents-remote"
             ]

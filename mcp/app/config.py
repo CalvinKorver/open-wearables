@@ -42,7 +42,32 @@ class Settings(BaseSettings):
 
     mcp_transport: Literal["stdio", "streamable-http"] = Field(
         default="stdio",
-        description="stdio for Cursor/coach subprocess MCP; streamable-http for remote HTTPS (Managed Agents)",
+        description="stdio for Cursor/coach subprocess MCP; streamable-http for remote HTTPS",
+    )
+
+    mcp_auth_mode: Literal["oauth", "bearer"] = Field(
+        default="bearer",
+        description="bearer: Managed Agents static_bearer; oauth: Claude custom connector (GitHub login)",
+    )
+
+    mcp_public_base_url: str = Field(
+        default="",
+        description="Public HTTPS origin for OAuth (e.g. https://mcp.example.com), no trailing slash",
+    )
+
+    mcp_github_client_id: str = Field(
+        default="",
+        description="GitHub OAuth App client ID (required when mcp_auth_mode=oauth)",
+    )
+
+    mcp_github_client_secret: SecretStr = Field(
+        default=SecretStr(""),
+        description="GitHub OAuth App client secret (required when mcp_auth_mode=oauth)",
+    )
+
+    mcp_jwt_signing_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="Optional stable JWT signing key for OAuth tokens across restarts (Fernet-safe random string)",
     )
 
     mcp_http_host: str = Field(
@@ -71,9 +96,23 @@ class Settings(BaseSettings):
     request_timeout: int = Field(default=30, description="HTTP request timeout in seconds")
 
     @model_validator(mode="after")
-    def require_bearer_for_streamable_http(self) -> Self:
-        if self.mcp_transport == "streamable-http" and not self.mcp_bearer_token.get_secret_value():
-            raise ValueError("MCP_BEARER_TOKEN is required when MCP_TRANSPORT=streamable-http")
+    def validate_streamable_http_auth(self) -> Self:
+        if self.mcp_transport != "streamable-http":
+            return self
+
+        if self.mcp_auth_mode == "bearer":
+            if not self.mcp_bearer_token.get_secret_value():
+                raise ValueError(
+                    "MCP_BEARER_TOKEN is required when MCP_AUTH_MODE=bearer and MCP_TRANSPORT=streamable-http"
+                )
+            return self
+
+        if not self.mcp_public_base_url:
+            raise ValueError("MCP_PUBLIC_BASE_URL is required when MCP_AUTH_MODE=oauth (HTTPS, no trailing slash)")
+        if not self.mcp_public_base_url.startswith("https://"):
+            raise ValueError("MCP_PUBLIC_BASE_URL must use HTTPS for Claude OAuth discovery")
+        if not self.mcp_github_client_id or not self.mcp_github_client_secret.get_secret_value():
+            raise ValueError("MCP_GITHUB_CLIENT_ID and MCP_GITHUB_CLIENT_SECRET are required when MCP_AUTH_MODE=oauth")
         return self
 
     @field_validator("user_local_timezone")

@@ -52,7 +52,21 @@ In the MCP service → **Variables**, add:
 |----------|----------|-------------|
 | **`OPEN_WEARABLES_API_URL`** | Yes | Public backend base URL, e.g. `https://backend-production-xxxx.up.railway.app` (no `/mcp`). |
 | **`OPEN_WEARABLES_API_KEY`** | Yes | Valid API key; MCP sends **`X-Open-Wearables-API-Key`** to the backend. |
-| **`MCP_BEARER_TOKEN`** | Yes | Long random secret; same value as Anthropic vault **`static_bearer`** **`token`**. |
+| **`MCP_AUTH_MODE`** | Yes | `oauth` for [Claude custom connector](/mcp-server/claude-custom-connector); `bearer` for [Managed Agents](/mcp-server/managed-agents-remote). |
+
+**When `MCP_AUTH_MODE=oauth` (Claude mobile / claude.ai):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| **`MCP_PUBLIC_BASE_URL`** | Yes | HTTPS origin of this MCP service, e.g. `https://<this-service>.up.railway.app` |
+| **`MCP_GITHUB_CLIENT_ID`** | Yes | GitHub OAuth App client ID |
+| **`MCP_GITHUB_CLIENT_SECRET`** | Yes | GitHub OAuth App secret; callback `https://<host>/auth/callback` |
+
+**When `MCP_AUTH_MODE=bearer` (Managed Agents only):**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| **`MCP_BEARER_TOKEN`** | Yes | Same value as Anthropic vault **`static_bearer`** **`token`**. |
 
 Railway injects **`PORT`** automatically — the server listens on **`PORT`** (you do not set **`MCP_HTTP_PORT`** unless you know you need it).
 
@@ -60,8 +74,9 @@ Optional:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| **`MCP_HTTP_PATH`** | `/mcp` | Must match the path in your public MCP URL and vault **`mcp_server_url`**. |
+| **`MCP_HTTP_PATH`** | `/mcp` | Must match the path in your public MCP URL. |
 | **`MCP_HTTP_HOST`** | `0.0.0.0` | Bind address inside the container. |
+| **`MCP_JWT_SIGNING_KEY`** | — | Stable OAuth JWT signing key across restarts. |
 | **`USER_LOCAL_TIMEZONE`** | `America/Los_Angeles` | **`start_local` / `end_local`** when workouts lack **`zone_offset`**. |
 | **`LOG_LEVEL`** | `INFO` | Logging. |
 | **`REQUEST_TIMEOUT`** | `30` | Backend HTTP timeout (seconds). |
@@ -92,15 +107,12 @@ Configure the service health check to **`GET /health`** on the public URL (path 
      https://<host>/mcp
    ```
 
-## 5. Claude Managed Agents
+## 5. Connect Claude
 
-Use the **exact** HTTPS MCP URL (including **`/mcp`**) in:
-
-- Agent **`mcp_servers[].url`**
-- Vault credential **`mcp_server_url`**
-- Session **`vault_ids`** with **`static_bearer`** **`token`** = **`MCP_BEARER_TOKEN`**
-
-See **[Remote MCP (Managed Agents)](/mcp-server/managed-agents-remote)** for the full connector checklist.
+| Goal | Guide |
+|------|--------|
+| **Mobile / claude.ai custom connector** (`MCP_AUTH_MODE=oauth`) | **[Claude custom connector](/mcp-server/claude-custom-connector)** |
+| **Managed Agents API** (`MCP_AUTH_MODE=bearer`) | **[Remote MCP (Managed Agents)](/mcp-server/managed-agents-remote)** |
 
 ## Troubleshooting
 

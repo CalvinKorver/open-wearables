@@ -178,22 +178,28 @@ Get sleep summaries for a user within a date range.
 }
 ```
 
-## Remote MCP (HTTPS / Claude Managed Agents)
+## Remote MCP (HTTPS)
 
-For **Claude Managed Agents**, deploy this package as a **separate HTTPS service** using MCP **streamable HTTP** (not stdio). Use:
+Deploy as a **separate HTTPS service** using MCP **streamable HTTP** (not stdio):
 
 ```bash
 uv run start-http
 ```
 
-Requirements:
+Set **`MCP_TRANSPORT=streamable-http`** and choose an auth mode:
 
-- **`MCP_BEARER_TOKEN`**: shared with Anthropic vault credential type **`static_bearer`** (`token` field); clients send `Authorization: Bearer …`.
-- **`OPEN_WEARABLES_API_KEY`**: stays server-side for REST calls to **`OPEN_WEARABLES_API_URL`** (do not use it as the MCP Bearer token).
+| `MCP_AUTH_MODE` | Use case | Required env |
+|-----------------|----------|----------------|
+| **`oauth`** (recommended for Claude mobile/web) | [Claude custom connector](https://claude.ai/customize/connectors) | `MCP_PUBLIC_BASE_URL` (HTTPS), `MCP_GITHUB_CLIENT_ID`, `MCP_GITHUB_CLIENT_SECRET` |
+| **`bearer`** | Claude Managed Agents vault `static_bearer` | `MCP_BEARER_TOKEN` |
 
-Defaults: MCP endpoint path **`/mcp`**, health checks **`GET /health`** and **`GET /`** without Bearer.
+Always set **`OPEN_WEARABLES_API_URL`** and **`OPEN_WEARABLES_API_KEY`** (server-side; not shown to Claude).
 
-See the docs: **Remote MCP (Managed Agents)** (`mcp-server/managed-agents-remote`) and **Deploy MCP on Railway** (`deployment/railway-mcp`) on docs.openwearables.io; [`mcp/Dockerfile`](Dockerfile) builds the image.
+- Connector URL: `https://<your-mcp-host>/mcp`
+- GitHub OAuth callback: `https://<your-mcp-host>/auth/callback`
+- Health: **`GET /health`** (no auth)
+
+Docs: **Claude custom connector** (`mcp-server/claude-custom-connector`), **Managed Agents** (`mcp-server/managed-agents-remote`), **Railway** (`deployment/railway-mcp`); [`mcp/Dockerfile`](Dockerfile) builds the image.
 
 ## Architecture
 
@@ -201,9 +207,11 @@ See the docs: **Remote MCP (Managed Agents)** (`mcp-server/managed-agents-remote
 mcp/
 ├── app/
 │   ├── main.py           # FastMCP entry point (stdio or streamable-http)
+│   ├── server_factory.py # Builds FastMCP + tools + optional OAuth
+│   ├── oauth_setup.py    # GitHub OAuth for Claude custom connector
 │   ├── http_server.py    # start-http / streamable HTTP + Uvicorn
-│   ├── bearer_auth.py    # Bearer gate for remote MCP
-│   ├── config.py         # Settings (API URL, API key)
+│   ├── bearer_auth.py    # Bearer gate (Managed Agents)
+│   ├── config.py         # Settings (API URL, API key, auth mode)
 │   ├── tools/
 │   │   ├── users.py      # get_users tool
 │   │   ├── activity.py   # get_activity_summary tool
