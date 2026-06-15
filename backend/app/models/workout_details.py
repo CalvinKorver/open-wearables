@@ -1,9 +1,10 @@
 from typing import Any
 
+from sqlalchemy import Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.mappings import FKEventRecordDetail, numeric_5_2, numeric_10_3
+from app.mappings import FKEventRecordDetail, json_binary, numeric_5_2, numeric_10_3
 
 from .event_record_detail import EventRecordDetail
 
@@ -13,6 +14,26 @@ class WorkoutDetails(EventRecordDetail):
 
     __tablename__ = "workout_details"
     __mapper_args__ = {"polymorphic_identity": "workout"}
+    __table_args__ = (
+        Index(
+            "ix_workout_details_segments_gin",
+            "segments",
+            postgresql_using="gin",
+            postgresql_ops={"segments": "jsonb_path_ops"},
+        ),
+        Index(
+            "ix_workout_details_hr_zones_gin",
+            "hr_zones",
+            postgresql_using="gin",
+            postgresql_ops={"hr_zones": "jsonb_path_ops"},
+        ),
+        Index(
+            "ix_workout_details_power_zones_gin",
+            "power_zones",
+            postgresql_using="gin",
+            postgresql_ops={"power_zones": "jsonb_path_ops"},
+        ),
+    )
 
     record_id: Mapped[FKEventRecordDetail]
 
@@ -28,9 +49,13 @@ class WorkoutDetails(EventRecordDetail):
     moving_time_seconds: Mapped[int | None]
     total_elevation_gain: Mapped[numeric_10_3 | None]
     average_speed: Mapped[numeric_5_2 | None]
+    average_cadence: Mapped[numeric_5_2 | None]
     average_watts: Mapped[numeric_10_3 | None]
     elev_high: Mapped[numeric_10_3 | None]
     elev_low: Mapped[numeric_10_3 | None]
 
     #: Provider-specific payloads (e.g. {"hevy": {...}}) for rich workout UIs.
     provider_extensions: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    segments: Mapped[json_binary | None]
+    hr_zones: Mapped[json_binary | None]
+    power_zones: Mapped[json_binary | None]

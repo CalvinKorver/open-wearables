@@ -32,7 +32,8 @@
             "pages": [
               "architecture/system-overview",
               "architecture/unified-data-model",
-              "architecture/data-types"
+              "architecture/data-types",
+              "architecture/multi-account-sync"
             ]
           },
           {
@@ -124,7 +125,8 @@
               "data-migrations/index",
               "data-migrations/backfill-garmin-sleep-end-datetime",
               "data-migrations/backfill-sleep-scores",
-              "data-migrations/normalize-body-fat-percentage"
+              "data-migrations/normalize-body-fat-percentage",
+              "data-migrations/relabel-oura-hrv-sdnn-to-rmssd"
             ]
           },
           {
@@ -137,6 +139,7 @@
           {
             "group": "Deployment",
             "pages": [
+              "deployment/docker-images",
               "deployment/railway",
               "deployment/railway-mcp"
             ]
@@ -165,6 +168,7 @@
             "pages": [
               "api-reference/guides/quick-integration",
               "api-reference/guides/webhooks",
+              "api-reference/guides/provider-webhook-subscriptions",
               "api-reference/guides/sync-status-stream",
               "api-reference/guides/apple-xml-import",
               "api-reference/guides/provider-setup",

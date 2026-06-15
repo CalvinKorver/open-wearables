@@ -310,7 +310,7 @@ class DataPointSeriesArchiveRepository:
             )
             deleted = (
                 db.query(DataPointSeries)
-                .filter(DataPointSeries.id.in_(ids_to_delete))
+                .filter(DataPointSeries.id.in_(ids_to_delete))  # ty:ignore[invalid-argument-type]
                 .delete(synchronize_session=False)
             )
 
@@ -329,7 +329,6 @@ class DataPointSeriesArchiveRepository:
         start_date: datetime,
         end_date: datetime,
         series_type_ids: list[int],
-        calendar_tz: str,
     ) -> list[dict]:
         """Query the archive table for daily activity aggregates.
 
@@ -356,11 +355,9 @@ class DataPointSeriesArchiveRepository:
         if isinstance(end_ts, datetime) and end_ts.tzinfo is None:
             end_ts = end_ts.replace(tzinfo=timezone.utc)
 
-        local_day = cast(func.timezone(calendar_tz, DataPointSeriesArchive.bucket_start_at), Date)
-
         results = (
             db.query(
-                local_day.label("activity_date"),
+                cast(DataPointSeriesArchive.bucket_start_at, Date).label("activity_date"),
                 DataSource.source.label("source"),
                 DataSource.device_model.label("device_model"),
                 func.sum(
@@ -415,7 +412,7 @@ class DataPointSeriesArchiveRepository:
                 DataPointSeriesArchive.series_type_definition_id.in_(series_type_ids),
             )
             .group_by(
-                local_day,
+                cast(DataPointSeriesArchive.bucket_start_at, Date),
                 DataSource.source,
                 DataSource.device_model,
             )
@@ -454,7 +451,7 @@ def _pretty_bytes(n: int) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if abs(n) < 1024:
             return f"{n:.2f} {unit}" if unit != "B" else f"{n} B"
-        n /= 1024  # type: ignore[assignment]
+        n /= 1024  # ty:ignore[invalid-assignment]
     return f"{n:.2f} PB"
 
 

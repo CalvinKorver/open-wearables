@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .sleep import SleepStage
+from .zones import HRZones, PowerZones
 
 
 class EventRecordDetailBase(BaseModel):
@@ -22,6 +23,7 @@ class EventRecordDetailBase(BaseModel):
     max_watts: Decimal | None = None
 
     average_speed: Decimal | None = None
+    average_cadence: Decimal | None = None
     average_watts: Decimal | None = None
 
     moving_time_seconds: int | None = None
@@ -46,6 +48,9 @@ class EventRecordDetailBase(BaseModel):
         default=None,
         description="Optional provider-specific JSON (e.g. full Hevy workout snapshot).",
     )
+    segments: list[dict] | None = None
+    hr_zones: HRZones | None = None
+    power_zones: PowerZones | None = None
 
 
 class EventRecordDetailCreate(EventRecordDetailBase):

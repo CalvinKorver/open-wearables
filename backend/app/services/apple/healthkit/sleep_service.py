@@ -6,7 +6,7 @@ from logging import getLogger
 from uuid import UUID, uuid4
 
 from app.config import settings
-from app.constants.series_types.apple import (
+from app.constants.series_types.sdk import (
     SleepPhase,
     get_apple_sleep_phase,
 )
@@ -401,10 +401,10 @@ def _calculate_final_metrics(stages: list[SleepStateStage]) -> tuple[dict, list[
                 current_end = end
                 continue
 
-            if start < current_end:
-                current_end = max(current_end, end)
+            if start < current_end:  # ty:ignore[unsupported-operator]
+                current_end = max(current_end, end)  # ty:ignore[invalid-argument-type]
             else:
-                metrics["in_bed_seconds"] += (current_end - current_start).total_seconds()
+                metrics["in_bed_seconds"] += (current_end - current_start).total_seconds()  # ty:ignore[unsupported-operator]
                 current_start = start
                 current_end = end
 

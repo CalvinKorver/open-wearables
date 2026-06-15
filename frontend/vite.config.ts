@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { devtools } from '@tanstack/devtools-vite';
 import { tanstackStart } from '@tanstack/react-start/plugin/vite';
@@ -5,7 +6,12 @@ import viteReact from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { nitro } from 'nitro/vite';
 
+const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
 const config = defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   build: {
     outDir: 'dist',
   },
@@ -24,7 +30,7 @@ const config = defineConfig({
     nitro({
       // decimal.js-light has "main": "decimal" (no extension) in package.json
       // which breaks ESM resolution when externalized. Force inline bundling.
-      externals: { inline: ['decimal.js-light'] },
+      noExternals: ['decimal.js-light'],
     }),
     tailwindcss(),
     tanstackStart(),

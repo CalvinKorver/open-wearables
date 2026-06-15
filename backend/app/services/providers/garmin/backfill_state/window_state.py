@@ -45,7 +45,7 @@ def get_anchor_timestamp(user_id: str | UUID) -> datetime:
     """Return the fixed anchor timestamp used for window date calculation."""
     val = get_redis_client().get(_get_key(str(user_id), "window", "anchor_ts"))
     if val:
-        return datetime.fromisoformat(val)
+        return datetime.fromisoformat(val)  # ty:ignore[invalid-argument-type]
     return datetime.now(timezone.utc)
 
 
@@ -100,7 +100,7 @@ def persist_window_results(user_id: str | UUID, window_idx: int) -> None:
     status_map = {"success": "done", "failed": "done", "timed_out": "timed_out"}
 
     for data_type, flat_status in zip(BACKFILL_DATA_TYPES, all_flat_statuses):
-        matrix_status = status_map.get(flat_status, "pending")
+        matrix_status = status_map.get(flat_status, "pending") if isinstance(flat_status, str) else "pending"
         window_key = f"{REDIS_PREFIX}:{uid}:w:{window_idx}:{data_type}:status"
         get_redis_client().setex(window_key, REDIS_TTL, matrix_status)
         results[data_type] = matrix_status

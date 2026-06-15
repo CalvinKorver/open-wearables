@@ -1,6 +1,8 @@
 import logging
+import ssl
 import sys
 from logging import Formatter, LogRecord, StreamHandler, getLogger
+from typing import cast
 
 from celery import Celery, signals
 from celery import current_app as current_celery_app
@@ -70,11 +72,12 @@ def init_raw_payload_storage(**kwargs) -> None:
         s3_bucket=settings.raw_payload_s3_bucket or settings.aws_bucket_name,
         s3_prefix=settings.raw_payload_s3_prefix,
         s3_endpoint_url=settings.raw_payload_s3_endpoint_url,
+        fit_files_enabled=settings.store_fit_files,
     )
 
 
 def create_celery() -> Celery:
-    celery_app: Celery = current_celery_app  # type: ignore[assignment]
+    celery_app = cast(Celery, current_celery_app)
     celery_app.conf.update(
         broker_url=settings.redis_url,
         result_backend=settings.redis_url,
@@ -98,6 +101,13 @@ def create_celery() -> Celery:
             "app.integrations.celery.tasks.process_sdk_upload_task.process_sdk_upload": {"queue": "sdk_sync"},
         },
     )
+
+    # rediss:// alone isn't enough for Celery — the broker/result transports read
+    # their TLS requirements from these dicts. Required for ElastiCache (TLS).
+    if settings.redis_ssl:
+        ssl_options = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+        celery_app.conf.broker_use_ssl = ssl_options
+        celery_app.conf.redis_backend_use_ssl = ssl_options
 
     celery_app.autodiscover_tasks(["app.integrations.celery.tasks", "app.integrations.celery.tasks.garmin"])
 

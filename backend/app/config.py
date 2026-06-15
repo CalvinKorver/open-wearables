@@ -4,6 +4,7 @@ import warnings
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class Settings(BaseSettings):
     redis_db: int = 0
     redis_password: SecretStr | None = None
     redis_username: str | None = None  # Redis 6.0+ ACL
+    redis_ssl: bool = False  # True for TLS (e.g. ElastiCache transit_encryption_enabled)
 
     # ADMIN ACCOUNT SEED
     admin_email: str = "admin@admin.com"
@@ -88,6 +90,15 @@ class Settings(BaseSettings):
     # Pre-0.4.2 behaviour. Set to false once your integration calls /sync/historical explicitly.
     # Will default to false in a future release.
     historical_sync_on_connect: bool = True
+
+    # Whether to ingest per-second workout samples (speed, cadence, power, GPS, etc.) into
+    # data_point_series on workout webhook arrival. Significantly increases DB storage.
+    # Per-provider granularity will be added via ProviderSetting in a future release.
+    ingest_workout_samples: bool = False
+
+    # Whether to store raw FIT files in S3 when received via provider APIs.
+    # Independent of ingest_workout_samples (DB samples) and raw_payload_storage (JSON payloads).
+    store_fit_files: bool = False
 
     # SCORE SETTINGS
     score_backfill_days: int = 30  # How far back the missing-score query looks
@@ -254,16 +265,26 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
-        """Get Redis connection URL built from individual settings."""
+        """Get Redis connection URL built from individual settings.
+
+        Credentials are URL-encoded so tokens containing reserved characters
+        (managed Redis AUTH tokens often do) don't corrupt the URL. When
+        redis_ssl is set the scheme becomes rediss:// and TLS cert verification
+        is required — needed for ElastiCache (transit_encryption_enabled).
+        """
         auth_part = ""
         if self.redis_username and self.redis_password:
-            auth_part = f"{self.redis_username}:{self.redis_password.get_secret_value()}@"
+            auth_part = (
+                f"{quote(self.redis_username, safe='')}:{quote(self.redis_password.get_secret_value(), safe='')}@"
+            )
         elif self.redis_password:
-            auth_part = f":{self.redis_password.get_secret_value()}@"
+            auth_part = f":{quote(self.redis_password.get_secret_value(), safe='')}@"
         elif self.redis_username:
-            auth_part = f"{self.redis_username}@"
+            auth_part = f"{quote(self.redis_username, safe='')}@"
 
-        return f"redis://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        scheme = "rediss" if self.redis_ssl else "redis"
+        query = "?ssl_cert_reqs=required" if self.redis_ssl else ""
+        return f"{scheme}://{auth_part}{self.redis_host}:{self.redis_port}/{self.redis_db}{query}"
 
     @field_validator("default_calendar_timezone")
     @classmethod
@@ -298,7 +319,7 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def _get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()  # ty: ignore[missing-argument]
 
 
 settings = _get_settings()

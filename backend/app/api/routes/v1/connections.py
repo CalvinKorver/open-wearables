@@ -58,6 +58,7 @@ def _validate_hevy_api_key(api_key: str) -> None:
 def _with_capabilities(
     conn: object,
     settings_map: dict[str, ProviderSetting],
+    linked_user_ids: list | None = None,
 ) -> UserConnectionWithCapabilities:
     enriched = UserConnectionWithCapabilities.model_validate(conn)
     with contextlib.suppress(ValueError):
@@ -74,6 +75,8 @@ def _with_capabilities(
             if (setting and setting.live_sync_mode is not None)
             else strategy.default_live_sync_mode
         )
+    if linked_user_ids:
+        enriched.linked_user_ids = linked_user_ids
     return enriched
 
 
@@ -85,8 +88,20 @@ def get_connections_endpoint(
 ):
     """Get all connections for a user, enriched with provider capability metadata."""
     settings_map = provider_settings_repo.get_all(db)
+    connections = user_connection_service.get_connections_by_user(db, user_id)
+    provider_pairs = [
+        (c.provider, c.provider_user_id)
+        for c in connections
+        if c.provider_user_id and c.status == ConnectionStatus.ACTIVE
+    ]
+    linked_map = user_connection_service.get_linked_user_ids(db, user_id, provider_pairs)
     return [
-        _with_capabilities(conn, settings_map) for conn in user_connection_service.get_connections_by_user(db, user_id)
+        _with_capabilities(
+            conn,
+            settings_map,
+            linked_map.get((conn.provider, conn.provider_user_id)) if conn.provider_user_id else None,
+        )
+        for conn in connections
     ]
 
 

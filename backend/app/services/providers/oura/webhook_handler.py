@@ -162,7 +162,7 @@ class OuraWebhookHandler(BaseWebhookHandler):
         Oura sends ``?verification_token=...&challenge=...`` when a subscription
         is created. We verify the token and echo the challenge back.
         """
-        expected = settings.oura_webhook_verification_token.get_secret_value()
+        expected = settings.oura_webhook_verification_token.get_secret_value()  # ty:ignore[unresolved-attribute]
 
         verification_token = request.query_params.get("verification_token")
         challenge = request.query_params.get("challenge", "")
@@ -231,6 +231,8 @@ class OuraWebhookHandler(BaseWebhookHandler):
             event_type=notification.event_type,
             object_id=notification.object_id,
         )
+
+        self.connection_repo.update_last_synced_at(db, connection)
 
         count = self._dispatch_data_type(db, notification, user_id)
 

@@ -14,7 +14,7 @@ Flow:
 
 from datetime import datetime, timezone
 from logging import getLogger
-from typing import Any
+from typing import Any, cast
 
 from celery import shared_task
 
@@ -61,7 +61,7 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
         for data_type in BACKFILL_DATA_TYPES
         for suffix in ("triggered_at", "completed_at")
     ]
-    for val in get_redis_client().mget(keys):
+    for val in cast(list[str | None], get_redis_client().mget(keys)):
         if val:
             try:
                 ts = datetime.fromisoformat(val)
@@ -73,7 +73,7 @@ def is_stuck(user_id: str, threshold_seconds: int = GC_STUCK_THRESHOLD_SECONDS) 
     anchor_val = get_redis_client().get(_key(user_id, "window", "anchor_ts"))
     if anchor_val:
         try:
-            anchor_ts = datetime.fromisoformat(anchor_val)
+            anchor_ts = datetime.fromisoformat(anchor_val)  # ty:ignore[invalid-argument-type]
             if most_recent is None or anchor_ts > most_recent:
                 most_recent = anchor_ts
         except (ValueError, TypeError):

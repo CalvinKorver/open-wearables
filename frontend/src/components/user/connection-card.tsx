@@ -5,8 +5,8 @@ import {
   ChevronDown,
   EllipsisVertical,
   History,
-  Info,
   Loader2,
+  Link2,
   PlayCircle,
   RefreshCw,
   RotateCcw,
@@ -17,6 +17,7 @@ import {
   XCircle,
   Zap,
 } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
 import { formatDistanceToNow } from 'date-fns';
 import { UserConnection } from '@/lib/api/types';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -150,6 +151,18 @@ function SyncRunRow({ run }: { run: SyncRunSummary }) {
         <div className="flex flex-col min-w-0 gap-0.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span>{sourceLabel}</span>
+            {run.source === 'linked_account' && run.primary_user_id && (
+              <>
+                <span>·</span>
+                <Link
+                  to="/users/$userId"
+                  params={{ userId: run.primary_user_id }}
+                  className="font-mono text-blue-500 hover:text-blue-400 hover:underline transition-colors"
+                >
+                  {run.primary_user_id.slice(0, 8)}…
+                </Link>
+              </>
+            )}
             <span>·</span>
             <span>{formatRelative(run.last_update)}</span>
             {run.started_at && run.ended_at && (
@@ -211,6 +224,15 @@ function formatTypeName(typeName: string): string {
 // Handles both comma-separated (Strava) and space-separated (Whoop, Polar) formats
 function parseScopeString(scope: string): string[] {
   return scope.split(/[,\s]+/).filter(Boolean);
+}
+
+// Shorten scope labels for inline display (e.g. ACTIVITY_EXPORT → Activity)
+function formatScopeChip(scope: string): string {
+  return scope
+    .replace(/_(EXPORT|IMPORT|READ|WRITE)$/i, '')
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/^./, (c) => c.toUpperCase());
 }
 
 export function ConnectionCard({
@@ -330,19 +352,87 @@ export function ConnectionCard({
                     })
                   : 'Never'}
               </p>
-              {connection.live_sync_mode && (
-                <div className="mt-1.5">
-                  {connection.live_sync_mode === 'webhook' ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                      <Zap className="h-3 w-3" />
-                      Webhook
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
-                      <Timer className="h-3 w-3" />
-                      Periodic pull
-                    </span>
+              {(connection.live_sync_mode || scopeItems.length > 0) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {connection.live_sync_mode &&
+                    (connection.live_sync_mode === 'webhook' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        <Zap className="h-3 w-3" />
+                        Webhook
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border">
+                        <Timer className="h-3 w-3" />
+                        Periodic pull
+                      </span>
+                    ))}
+                  {scopeItems.length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground border border-border/60 cursor-default hover:bg-muted hover:text-foreground hover:border-border transition-colors">
+                          {scopeItems.length} scope
+                          {scopeItems.length !== 1 ? 's' : ''}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        align="start"
+                        sideOffset={6}
+                        hideArrow
+                        className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                      >
+                        <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                          Granted permissions
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {scopeItems.map((s) => (
+                            <span
+                              key={s}
+                              className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-medium bg-zinc-800 text-zinc-200 border border-zinc-700"
+                            >
+                              {formatScopeChip(s)}
+                            </span>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
+                  {connection.status === 'active' &&
+                    connection.provider_user_id &&
+                    connection.linked_user_ids &&
+                    connection.linked_user_ids.length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 cursor-default">
+                            <Link2 className="h-3 w-3" />
+                            {connection.linked_user_ids.length} linked
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="bottom"
+                          align="start"
+                          sideOffset={6}
+                          hideArrow
+                          className="max-w-xs bg-zinc-900 border border-zinc-700 shadow-xl"
+                        >
+                          <p className="text-[10px] font-medium text-zinc-500 mb-1.5 uppercase tracking-wide">
+                            Other linked OW accounts
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {connection.linked_user_ids.map((uid) => (
+                              <Link
+                                key={uid}
+                                to="/users/$userId"
+                                params={{ userId: uid }}
+                                className="inline-flex px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 hover:text-white transition-colors"
+                              >
+                                {uid.slice(0, 8)}
+                              </Link>
+                            ))}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                 </div>
               )}
             </div>
@@ -395,34 +485,6 @@ export function ConnectionCard({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Show data scope */}
-        {scopeItems.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default"
-              >
-                <Info className="h-3.5 w-3.5 shrink-0" />
-                <span>Data scope</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="start" className="max-w-sm">
-              <div className="flex flex-wrap gap-1 py-0.5">
-                {scopeItems.map((scopeItem) => (
-                  <Badge
-                    key={scopeItem}
-                    variant="secondary"
-                    className="text-[11px] font-normal px-1.5 py-0"
-                  >
-                    {scopeItem}
-                  </Badge>
-                ))}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        )}
-
         {/* Show backfill progress for Garmin */}
         {isBackfillInProgress && backfillStatus && (
           <div className="space-y-2">
