@@ -577,6 +577,11 @@ class TestDisconnectDeregistration:
         assert data["provider"] == "hevy"
         assert data["status"] == ConnectionStatus.ACTIVE.value
         mock_sync_delay.assert_called_once()
+        sync_kwargs = mock_sync_delay.call_args.kwargs
+        assert sync_kwargs["providers"] == ["hevy"]
+        assert sync_kwargs["is_historical"] is True
+        assert sync_kwargs["start_date"] is not None
+        assert sync_kwargs["end_date"] is not None
         row = db.query(UserConnection).filter_by(user_id=user.id, provider="hevy").one()
         assert row.access_token == "hevy-secret-key"
 

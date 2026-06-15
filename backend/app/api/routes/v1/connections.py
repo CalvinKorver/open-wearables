@@ -1,5 +1,5 @@
 import contextlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 import httpx
@@ -26,6 +26,7 @@ factory = ProviderFactory()
 provider_settings_repo = ProviderSettingsRepository()
 
 HEVY_API_BASE = "https://api.hevyapp.com"
+HEVY_INITIAL_SYNC_DAYS = 30
 
 
 class HevyConnectBody(BaseModel):
@@ -139,11 +140,15 @@ def connect_hevy(
             ),
         )
 
+    # Match OAuth connect: backfill recent history. A live-only cursor (start=now)
+    # would import zero past workouts on first connect.
+    now = datetime.now(timezone.utc)
     sync_vendor_data.delay(
         user_id=str(user_uuid),
-        start_date=None,
-        end_date=None,
+        start_date=(now - timedelta(days=HEVY_INITIAL_SYNC_DAYS)).isoformat(),
+        end_date=now.isoformat(),
         providers=[ProviderName.HEVY.value],
+        is_historical=True,
     )
     return connection
 

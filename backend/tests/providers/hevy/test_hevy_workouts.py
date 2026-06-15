@@ -55,6 +55,71 @@ def test_get_workouts_filters_by_date_range(hevy_workouts: HevyWorkouts, db: DbS
 
     assert len(result) == 1
     assert result[0]["id"] == "w-in"
+    assert hevy_workouts._make_api_request.call_count == 1
+
+
+def test_get_workouts_stops_pagination_when_page_older_than_start(
+    hevy_workouts: HevyWorkouts,
+    db: DbSession,
+) -> None:
+    """Should stop after a page whose oldest workout is before start_date."""
+    user_id = uuid4()
+    start = datetime(2024, 6, 1, tzinfo=timezone.utc)
+    end = datetime(2024, 6, 30, 23, 59, 59, tzinfo=timezone.utc)
+
+    page_one = {
+        "page": 1,
+        "page_count": 3,
+        "workouts": [
+            {
+                "id": "w-june-2",
+                "title": "June 20",
+                "start_time": "2024-06-20T10:00:00Z",
+                "end_time": "2024-06-20T11:00:00Z",
+                "exercises": [],
+            },
+            {
+                "id": "w-june-1",
+                "title": "June 5",
+                "start_time": "2024-06-05T10:00:00Z",
+                "end_time": "2024-06-05T11:00:00Z",
+                "exercises": [],
+            },
+        ],
+    }
+    page_two = {
+        "page": 2,
+        "page_count": 3,
+        "workouts": [
+            {
+                "id": "w-may",
+                "title": "May",
+                "start_time": "2024-05-15T10:00:00Z",
+                "end_time": "2024-05-15T11:00:00Z",
+                "exercises": [],
+            },
+        ],
+    }
+    page_three = {
+        "page": 3,
+        "page_count": 3,
+        "workouts": [
+            {
+                "id": "w-april",
+                "title": "April",
+                "start_time": "2024-04-01T10:00:00Z",
+                "end_time": "2024-04-01T11:00:00Z",
+                "exercises": [],
+            },
+        ],
+    }
+
+    hevy_workouts._make_api_request = MagicMock(side_effect=[page_one, page_two, page_three])  # type: ignore[method-assign]
+
+    result = hevy_workouts.get_workouts(db, user_id, start, end)
+
+    assert len(result) == 2
+    assert {w["id"] for w in result} == {"w-june-2", "w-june-1"}
     assert hevy_workouts._make_api_request.call_count == 2
 
 

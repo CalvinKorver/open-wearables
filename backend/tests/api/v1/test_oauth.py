@@ -7,12 +7,14 @@ Tests the /api/v1/oauth endpoints including:
 - PUT /api/v1/oauth/providers/{provider} - test update provider status
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, PropertyMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.schemas.model_crud.credentials import ProviderCredentials
+from app.services.providers.strava.oauth import StravaOAuth
 from tests.factories import DeveloperFactory
 from tests.utils import developer_auth_headers
 
@@ -126,6 +128,30 @@ class TestOAuthAuthorizeEndpoint:
 
         # Assert - Should fail because apple doesn't have OAuth
         assert response.status_code in [400, 401, 422]
+
+    def test_authorize_fails_when_provider_credentials_missing(self, client: TestClient, db: Session) -> None:
+        """Deployed misconfiguration: empty client_id must not redirect to Strava."""
+        user_id = uuid4()
+        empty_credentials = ProviderCredentials(
+            client_id="",
+            client_secret="",
+            redirect_uri="http://localhost:8000/api/v1/oauth/strava/callback",
+            default_scope="activity:read_all",
+        )
+
+        with patch.object(
+            StravaOAuth,
+            "credentials",
+            new_callable=PropertyMock,
+            return_value=empty_credentials,
+        ):
+            response = client.get(
+                "/api/v1/oauth/strava/authorize",
+                params={"user_id": str(user_id)},
+            )
+
+        assert response.status_code == 503
+        assert "STRAVA_CLIENT_ID" in response.json()["detail"]
 
 
 class TestOAuthProvidersEndpoint:

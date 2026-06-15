@@ -83,7 +83,11 @@ Strava is an activity-focused platform — it does not provide continuous health
   </Step>
 
   <Step title="Configure credentials in Open Wearables">
-    Add the following to your `.env` file:
+    **Local development:** add the following to `backend/config/.env`:
+
+    **Production (e.g. [Railway](/deployment/railway)):** set the same variables on the **Backend** service (not the Frontend), set `API_BASE_URL` to your public Backend URL, then redeploy.
+
+    Add the following to your environment:
 
 ```bash
 #--- Strava ---#

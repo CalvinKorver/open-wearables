@@ -11,8 +11,13 @@ from uuid import UUID
 import httpx
 from fastapi import HTTPException
 from redis import Redis
-from starlette.status import HTTP_400_BAD_REQUEST, HTTP_500_INTERNAL_SERVER_ERROR
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
+from app.config import settings
 from app.database import DbSession
 from app.integrations.redis_client import get_redis_client
 from app.repositories.user_connection_repository import UserConnectionRepository
@@ -26,6 +31,7 @@ from app.schemas.model_crud.credentials import (
 )
 from app.schemas.model_crud.user_management import UserConnectionCreate
 from app.services.outgoing_webhooks.events import on_connection_created
+from app.utils.config_utils import EnvironmentType
 from app.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
@@ -67,12 +73,40 @@ class BaseOAuthTemplate(ABC):
     use_pkce: bool = False
     auth_method: AuthenticationMethod = AuthenticationMethod.BASIC_AUTH
 
+    def _ensure_oauth_configured(self) -> None:
+        """Reject OAuth start when server-side credentials or redirect URI are missing."""
+        creds = self.credentials
+        env_prefix = self.provider_name.upper()
+
+        if not creds.client_id or not creds.client_secret:
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"OAuth for '{self.provider_name}' is not configured on the API server. "
+                    f"Set {env_prefix}_CLIENT_ID and {env_prefix}_CLIENT_SECRET "
+                    "(Railway: Backend service → Variables), then redeploy."
+                ),
+            )
+
+        redirect = creds.redirect_uri or ""
+        if settings.environment == EnvironmentType.PRODUCTION and ("localhost" in redirect or "127.0.0.1" in redirect):
+            raise HTTPException(
+                status_code=HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"OAuth redirect URI for '{self.provider_name}' points to localhost "
+                    f"({redirect}). Set API_BASE_URL on the Backend service to your public API URL "
+                    "(e.g. https://your-backend.up.railway.app), then redeploy."
+                ),
+            )
+
     def get_authorization_url(self, user_id: UUID, redirect_uri: str | None = None) -> tuple[str, str]:
         """Generates the provider's authorization URL.
 
         Returns:
             tuple[str, str]: The authorization URL and the state.
         """
+        self._ensure_oauth_configured()
+
         state = secrets.token_urlsafe(32)  # random state 32-bytes (Base64 encoding)
 
         oauth_state = OAuthState(

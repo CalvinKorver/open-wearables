@@ -29,6 +29,17 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
     return dt
 
 
+def _oldest_start_on_page(workouts: list[Any]) -> datetime | None:
+    """Oldest parsed start_time on a paginated page (Hevy returns newest first)."""
+    oldest: datetime | None = None
+    for raw in workouts:
+        if isinstance(raw, dict):
+            start = _parse_iso_datetime(raw.get("start_time"))
+            if start is not None and (oldest is None or start < oldest):
+                oldest = start
+    return oldest
+
+
 class HevyWorkouts(BaseWorkoutsTemplate):
     """Fetch Hevy strength workouts via API key and map to event records."""
 
@@ -88,6 +99,10 @@ class HevyWorkouts(BaseWorkoutsTemplate):
                         continue
                     if start_date <= start <= end_date:
                         collected.append(raw)
+
+            oldest = _oldest_start_on_page(workouts)
+            if oldest is not None and oldest < start_date:
+                break
 
             page_count = int(response.get("page_count") or 1)
             if page >= page_count:
