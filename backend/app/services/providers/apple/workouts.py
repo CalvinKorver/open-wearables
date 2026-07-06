@@ -27,7 +27,7 @@ class AppleWorkouts(BaseWorkoutsTemplate):
             connection_repo,
             provider_name="apple_health_sdk",
             api_base_url="",
-            oauth=None,  # ty:ignore[invalid-argument-type]
+            oauth=None,
         )
         self.handlers: dict[str, AppleSourceHandler] = {
             "healthkit": HealthKitHandler(),

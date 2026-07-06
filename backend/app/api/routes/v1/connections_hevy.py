@@ -82,7 +82,7 @@ def connect_hevy(
         db.refresh(existing)
         connection = existing
     else:
-        connection = repo.create(
+        created = repo.create(
             db,
             UserConnectionCreate(
                 user_id=user_uuid,
@@ -95,6 +95,12 @@ def connect_hevy(
                 updated_at=now,
             ),
         )
+        if created is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create Hevy connection",
+            )
+        connection = created
 
     # Match OAuth connect: backfill recent history. A live-only cursor (start=now)
     # would import zero past workouts on first connect.
