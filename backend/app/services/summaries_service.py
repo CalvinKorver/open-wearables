@@ -477,9 +477,7 @@ class SummariesService:
         self.logger.debug(f"Fetching activity summaries for user {user_id} from {start_date} to {end_date}")
 
         # Get aggregated data from time-series repository (live data)
-        results = self.data_point_repo.get_daily_activity_aggregates(
-            db_session, user_id, start_date, end_date
-        )
+        results = self.data_point_repo.get_daily_activity_aggregates(db_session, user_id, start_date, end_date)
 
         # Merge archived data when archival is enabled
         results = self._merge_archive_activity(db_session, user_id, start_date, end_date, results)

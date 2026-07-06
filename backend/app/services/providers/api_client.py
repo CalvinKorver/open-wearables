@@ -42,6 +42,7 @@ def _get_static_api_key(
         )
     return connection.access_token
 
+
 # Rate limiting configuration (Garmin: 100 req / 60s window)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 15.0  # Base delay for exponential backoff (seconds): 15s, 30s, 60s
@@ -267,7 +268,6 @@ def make_authenticated_request(
         status_code=500,
         detail=f"Failed to complete request to {provider_name.capitalize()} after retries",
     )
-
 
     raise HTTPException(
         status_code=500,
