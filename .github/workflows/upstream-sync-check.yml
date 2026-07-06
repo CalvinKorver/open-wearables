@@ -1,0 +1,47 @@
+name: Upstream sync check
+
+on:
+  schedule:
+    # Mondays 09:00 UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-behind-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Compare with upstream main
+        id: compare
+        run: |
+          git remote add upstream https://github.com/the-momentum/open-wearables.git 2>/dev/null || \
+            git remote set-url upstream https://github.com/the-momentum/open-wearables.git
+          git fetch upstream main --quiet
+          BEHIND=$(git rev-list --count HEAD..upstream/main)
+          AHEAD=$(git rev-list --count upstream/main..HEAD)
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+          echo "### Upstream sync status" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commits **behind** the-momentum/main: **$BEHIND**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commits **ahead** of the-momentum/main: **$AHEAD**" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BEHIND" -gt 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo 'Merge upstream: `git fetch origin && git checkout main && git merge origin/main`' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "See [Fork upstream contributions](/dev-guides/fork-upstream-contributions) for conflict hotspots." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Warn when behind upstream
+        if: steps.compare.outputs.behind != '0'
+        run: |
+          echo "::warning::main is ${{ steps.compare.outputs.behind }} commit(s) behind the-momentum/open-wearables main"
+          exit 0

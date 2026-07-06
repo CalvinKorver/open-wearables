@@ -14,7 +14,8 @@ from app.schemas.responses.dashboard import UserDataSummaryResponse
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep, system_info_service
 from app.services.summaries_service import summaries_service
-from app.utils.dates import DateTimeQueryParam, parse_events_range_datetime, parse_query_datetime
+from app.utils.date_ranges import DateRangeMode, parse_range_end, parse_range_start
+from app.utils.dates import DateTimeQueryParam
 
 router = APIRouter()
 
@@ -34,8 +35,8 @@ def get_activity_summary(
 
     Aggregates time-series data (steps, energy, heart rate, etc.) by day.
     """
-    start_datetime = parse_events_range_datetime(start_date, bound="start")
-    end_datetime = parse_events_range_datetime(end_date, bound="end")
+    start_datetime = parse_range_start(start_date, DateRangeMode.CALENDAR_DAY)
+    end_datetime = parse_range_end(end_date, DateRangeMode.CALENDAR_DAY)
     return summaries_service.get_activity_summaries(
         db, user_id, start_datetime, end_datetime, cursor, limit, sort_order
     )
@@ -52,8 +53,8 @@ def get_sleep_summary(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[SleepSummary]:
     """Returns daily sleep metrics."""
-    start_datetime = parse_events_range_datetime(start_date, bound="start")
-    end_datetime = parse_events_range_datetime(end_date, bound="end")
+    start_datetime = parse_range_start(start_date, DateRangeMode.CALENDAR_DAY)
+    end_datetime = parse_range_end(end_date, DateRangeMode.CALENDAR_DAY)
     return summaries_service.get_sleep_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 
@@ -68,8 +69,8 @@ def get_recovery_summary(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> PaginatedResponse[RecoverySummary]:
     """Returns daily recovery metrics (recovery score, HRV, resting HR, SpO2)."""
-    start_datetime = parse_query_datetime(start_date)
-    end_datetime = parse_query_datetime(end_date)
+    start_datetime = parse_range_start(start_date, DateRangeMode.UTC_INSTANT)
+    end_datetime = parse_range_end(end_date, DateRangeMode.UTC_INSTANT)
     return summaries_service.get_recovery_summaries(db, user_id, start_datetime, end_datetime, cursor, limit)
 
 

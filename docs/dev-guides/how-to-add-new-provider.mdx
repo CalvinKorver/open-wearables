@@ -102,7 +102,7 @@ Use lowercase for the provider name in directory and file names to maintain cons
 </Tip>
 
 <Note>
-**API key REST providers (example: Hevy):** Omit `oauth.py` and set `oauth = None` on the strategy. Override `has_cloud_api` to return `True` so scheduled sync includes the provider. Implement `BaseWorkoutsTemplate` with `oauth=None` so `_make_api_request` uses `make_api_key_request` (static `api-key` header). Add a dedicated FastAPI route to validate and store the user API key on `UserConnection`, then enqueue `sync_vendor_data`. See [Hevy](/providers/hevy) and `backend/app/services/providers/hevy/`.
+**API key REST providers (example: Hevy):** Omit `oauth.py` and set `oauth = None` on the strategy. Override `has_cloud_api` to return `True` so scheduled sync includes the provider. Implement `BaseWorkoutsTemplate` with `oauth=None` so `_make_api_request` uses `make_api_key_request` (static `api-key` header). Add a **dedicated route module** (e.g. `backend/app/api/routes/v1/connections_hevy.py`) with `POST /users/{user_id}/connections/hevy` to validate and store the user API key on `UserConnection`, then enqueue `sync_vendor_data`. Register the router in `backend/app/api/routes/v1/__init__.py` — do **not** add provider-specific connect logic to the shared `connections.py` module. See [Hevy](/providers/hevy) and `backend/app/services/providers/hevy/`.
 </Note>
 
 ---
@@ -410,6 +410,26 @@ class SuuntoWorkouts(BaseWorkoutsTemplate):
 </Steps>
 
 <Warning>There are also utils modules, like `app/backend/services/providers/api_client.py`, which provides utilities for making oauth api requests.</Warning>
+
+### Provider-specific workout payloads (`provider_extensions`)
+
+Use structured `workout_details` columns (`segments`, `hr_zones`, `power_zones`, heart-rate aggregates, etc.) only for **cross-provider normalized fields** that the platform maps into the unified data model.
+
+For **rich provider-native snapshots** used by custom UIs (e.g. full Hevy exercise lists), store JSON under `provider_extensions` on `EventRecordDetailCreate` / `WorkoutDetails`:
+
+```python
+workout_detail_create = EventRecordDetailCreate(
+    record_id=workout_id,
+    heart_rate_avg=...,
+    provider_extensions={"hevy": dict(raw_workout)},  # keyed by provider name
+)
+```
+
+Rules:
+
+- Do **not** add new SQL columns per provider for UI-only payloads — use `provider_extensions["your_provider"]`.
+- Echo `provider_extensions` in API workout responses; frontend reads the provider key it understands (see `frontend/src/lib/utils/hevy-workout.ts`).
+- Add a migration only when introducing the JSONB column itself (already present); not for each new provider.
 
 ---
 

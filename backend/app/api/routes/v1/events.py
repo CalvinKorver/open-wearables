@@ -13,7 +13,8 @@ from app.schemas.responses.activity import (
 from app.schemas.utils import PaginatedResponse
 from app.services import ApiKeyDep
 from app.services.event_record_service import event_record_service
-from app.utils.dates import DateTimeQueryParam, parse_events_range_datetime, parse_query_datetime
+from app.utils.date_ranges import DateRangeMode, parse_range_end, parse_range_start
+from app.utils.dates import DateTimeQueryParam
 
 router = APIRouter()
 
@@ -31,8 +32,8 @@ def list_workouts(
 ) -> PaginatedResponse[Workout]:
     """Returns workout sessions."""
     params = EventRecordQueryParams(
-        start_datetime=parse_events_range_datetime(start_date, bound="start"),
-        end_datetime=parse_events_range_datetime(end_date, bound="end"),
+        start_datetime=parse_range_start(start_date, DateRangeMode.CALENDAR_DAY),
+        end_datetime=parse_range_end(end_date, DateRangeMode.CALENDAR_DAY),
         cursor=cursor,
         limit=limit,
         record_type=record_type,
@@ -52,8 +53,8 @@ def list_sleep_sessions(
 ) -> PaginatedResponse[SleepSession]:
     """Returns sleep sessions (including naps)."""
     params = EventRecordQueryParams(
-        start_datetime=parse_events_range_datetime(start_date, bound="start"),
-        end_datetime=parse_events_range_datetime(end_date, bound="end"),
+        start_datetime=parse_range_start(start_date, DateRangeMode.CALENDAR_DAY),
+        end_datetime=parse_range_end(end_date, DateRangeMode.CALENDAR_DAY),
         cursor=cursor,
         limit=limit,
     )
@@ -72,8 +73,8 @@ def list_menstrual_cycles(
 ) -> PaginatedResponse[MenstrualCycleRecord]:
     """Returns menstrual cycle records."""
     params = EventRecordQueryParams(
-        start_datetime=parse_query_datetime(start_date),
-        end_datetime=parse_query_datetime(end_date),
+        start_datetime=parse_range_start(start_date, DateRangeMode.UTC_INSTANT),
+        end_datetime=parse_range_end(end_date, DateRangeMode.UTC_INSTANT),
         cursor=cursor,
         limit=limit,
     )
