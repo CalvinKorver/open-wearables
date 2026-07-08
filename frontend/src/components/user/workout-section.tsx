@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { addDays, format, formatDistanceToNow } from 'date-fns';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import {
   ChevronDown,
@@ -637,7 +637,8 @@ export function WorkoutSection({
     userId,
     {
       start_date: dateToTimestamp(startDate),
-      end_date: dateToTimestamp(endDate),
+      // Exclusive end bound: include all workouts through end of today (local)
+      end_date: dateToTimestamp(addDays(endDate, 1)),
       limit: 100,
       sort_order: 'desc',
     }
