@@ -379,7 +379,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
 class TestCreateOrMergeSleep:
     """Test create_or_merge_sleep adjacent session merging."""
 
-    THRESHOLD = 120  # minutes, matching settings.sleep_end_gap_minutes default
+    THRESHOLD = 30  # minutes, matching settings.sleep_end_gap_minutes default
 
     def _dt(self, hour: int, minute: int = 0, day: int = 21) -> datetime:
         return datetime(2026, 3, day, hour, minute, tzinfo=timezone.utc)
