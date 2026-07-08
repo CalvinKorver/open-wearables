@@ -181,6 +181,13 @@ class Settings(BaseSettings):
     invitation_expire_days: int = 7
     email_max_retries: int = 5
 
+    # DAILY HEALTH BRIEFING (Telegram + Claude)
+    anthropic_api_key: SecretStr | None = None
+    telegram_bot_token: SecretStr | None = None
+    telegram_chat_id: str | None = None
+    daily_briefing_user_id: str | None = None
+    daily_briefing_hour_utc: int = 8
+
     # SDK INVITATION CODE SETTINGS
     user_invitation_code_expire_days: int = 7
 

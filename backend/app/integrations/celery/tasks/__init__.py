@@ -18,6 +18,7 @@ from app.services.providers.garmin.backfill_state import (
 )
 
 from .archival_task import run_daily_archival
+from .daily_briefing_task import daily_health_briefing
 from .emit_webhook_event_task import emit_webhook_event
 from .fill_missing_resilience_scores_task import fill_missing_resilience_scores
 from .fill_missing_sleep_scores_task import fill_missing_sleep_scores
@@ -61,6 +62,8 @@ __all__ = [
     "gc_stuck_backfills",
     # Archival
     "run_daily_archival",
+    # Daily health briefing
+    "daily_health_briefing",
     # Sleep score calculation
     "fill_missing_sleep_scores",
     # Resilience score calculation

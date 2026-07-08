@@ -154,6 +154,12 @@ def create_celery() -> Celery:
             "args": (),
             "kwargs": {},
         },
+        "daily-health-briefing": {
+            "task": "app.integrations.celery.tasks.daily_briefing_task.daily_health_briefing",
+            "schedule": crontab(hour=settings.daily_briefing_hour_utc, minute=0),
+            "args": (),
+            "kwargs": {},
+        },
     }
 
     return celery_app
