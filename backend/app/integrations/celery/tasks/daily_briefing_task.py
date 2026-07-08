@@ -10,7 +10,8 @@ from app.config import settings
 from app.database import DbSession, SessionLocal
 from app.schemas.model_crud.activities import EventRecordQueryParams
 from app.schemas.responses.activity import SleepSummary, Workout
-from app.services import event_record_service, summaries_service
+from app.services.event_record_service import event_record_service
+from app.services.summaries_service import summaries_service
 from app.utils.date_ranges import DateRangeMode, parse_range_end, parse_range_start
 from app.utils.sentry_helpers import log_and_capture_error
 from app.utils.structured_logging import log_structured
