@@ -106,6 +106,25 @@ jobs:
       TEST_REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: test-secret-key-for-ci
       MASTER_KEY: dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk=
+      API_BASE_URL: http://localhost:8000
+      GARMIN_CLIENT_ID: test-oauth-client-id
+      GARMIN_CLIENT_SECRET: test-oauth-client-secret
+      POLAR_CLIENT_ID: test-oauth-client-id
+      POLAR_CLIENT_SECRET: test-oauth-client-secret
+      SUUNTO_CLIENT_ID: test-oauth-client-id
+      SUUNTO_CLIENT_SECRET: test-oauth-client-secret
+      STRAVA_CLIENT_ID: test-oauth-client-id
+      STRAVA_CLIENT_SECRET: test-oauth-client-secret
+      ULTRAHUMAN_CLIENT_ID: test-oauth-client-id
+      ULTRAHUMAN_CLIENT_SECRET: test-oauth-client-secret
+      OURA_CLIENT_ID: test-oauth-client-id
+      OURA_CLIENT_SECRET: test-oauth-client-secret
+      WHOOP_CLIENT_ID: test-oauth-client-id
+      WHOOP_CLIENT_SECRET: test-oauth-client-secret
+      FITBIT_CLIENT_ID: test-oauth-client-id
+      FITBIT_CLIENT_SECRET: test-oauth-client-secret
+      WAHOO_CLIENT_ID: test-oauth-client-id
+      WAHOO_CLIENT_SECRET: test-oauth-client-secret
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python

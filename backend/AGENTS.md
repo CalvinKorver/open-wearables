@@ -213,6 +213,17 @@ make downgrade                             # Rollback
 - All imports at module level — never inside functions or methods
 - PEP 8 naming conventions
 
+## Date range query parameters
+
+Use [`app/utils/date_ranges.py`](app/utils/date_ranges.py) in route handlers — not `parse_events_range_datetime` / `parse_query_datetime` directly.
+
+| Mode | Use for |
+|------|---------|
+| `DateRangeMode.CALENDAR_DAY` | Activity/sleep summaries and workout/sleep event lists |
+| `DateRangeMode.UTC_INSTANT` | Recovery summaries, menstrual cycle events |
+
+See the module docstring in `date_ranges.py` for the full endpoint list.
+
 ## Commands
 
 ```bash

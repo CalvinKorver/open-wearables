@@ -549,8 +549,8 @@ class TestDisconnectDeregistration:
         assert response.status_code == 204
         mock_httpx_delete.assert_not_called()
 
-    @patch("app.api.routes.v1.connections.sync_vendor_data.delay")
-    @patch("app.api.routes.v1.connections.httpx.get")
+    @patch("app.api.routes.v1.connections_hevy.sync_vendor_data.delay")
+    @patch("app.api.routes.v1.connections_hevy.httpx.get")
     def test_connect_hevy_creates_connection(
         self,
         mock_httpx_get: MagicMock,
@@ -585,8 +585,8 @@ class TestDisconnectDeregistration:
         row = db.query(UserConnection).filter_by(user_id=user.id, provider="hevy").one()
         assert row.access_token == "hevy-secret-key"
 
-    @patch("app.api.routes.v1.connections.sync_vendor_data.delay")
-    @patch("app.api.routes.v1.connections.httpx.get")
+    @patch("app.api.routes.v1.connections_hevy.sync_vendor_data.delay")
+    @patch("app.api.routes.v1.connections_hevy.httpx.get")
     def test_connect_hevy_updates_existing(
         self,
         mock_httpx_get: MagicMock,
@@ -613,7 +613,7 @@ class TestDisconnectDeregistration:
         row = db.query(UserConnection).filter_by(user_id=user.id, provider="hevy").one()
         assert row.access_token == "new-key"
 
-    @patch("app.api.routes.v1.connections.httpx.get")
+    @patch("app.api.routes.v1.connections_hevy.httpx.get")
     def test_connect_hevy_user_not_found(
         self,
         mock_httpx_get: MagicMock,

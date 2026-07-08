@@ -1,0 +1,93 @@
+---
+title: "Upstream contributions from this fork"
+sidebarTitle: "Upstream contributions"
+description: "Fork-specific changes that are good candidates for pull requests to the-momentum/open-wearables, to shrink future merge conflicts."
+---
+
+This fork tracks [the-momentum/open-wearables](https://github.com/the-momentum/open-wearables) as `origin`. The items below are **generic** improvements already in this fork that upstream would benefit from. Keep fork-only work (MCP OAuth connector, coach app, calendar-day API parsing) isolated — see the **Fork extensions** nav group.
+
+## Sync workflow
+
+```bash
+git fetch origin
+git checkout main
+git merge origin/main
+# resolve conflicts; run make migrate && cd backend && uv run pytest -v
+git checkout feat/your-branch && git merge main
+```
+
+A weekly [GitHub Action](https://github.com/CalvinKorver/open-wearables/blob/main/.github/workflows/upstream-sync-check.yml) on this fork reports when `main` is behind upstream.
+
+---
+
+## PR 1: OAuth configuration guards
+
+**Files:** `backend/app/services/providers/templates/base_oauth.py`
+
+**Summary:** Fail fast with `503` when OAuth client credentials or production redirect URI are missing, instead of redirecting users to a broken provider authorize URL.
+
+**Suggested title:** `fix(backend): reject OAuth authorize when credentials or redirect URI are misconfigured`
+
+**Test plan:**
+
+- Authorize endpoint returns `503` when `{PROVIDER}_CLIENT_ID` is unset.
+- Authorize endpoint returns `503` in production when redirect URI contains `localhost`.
+
+**Fork note:** Error messages may mention Railway; generalize to “set env vars and redeploy” before opening upstream PR.
+
+---
+
+## PR 2: API-key HTTP client helper
+
+**Files:** `backend/app/services/providers/api_client.py`
+
+**Summary:** Add `make_api_key_request()` for providers that authenticate with a static header (not Bearer OAuth). Used by API-key workout templates via `BaseWorkoutsTemplate._make_api_request`.
+
+**Suggested title:** `feat(backend): add make_api_key_request for static API-key providers`
+
+**Test plan:**
+
+- Unit test with mocked `httpx` for success, 401, and 429 retry paths.
+
+---
+
+## PR 3: Hevy provider (optional)
+
+**Files:**
+
+- `backend/app/services/providers/hevy/`
+- `backend/app/api/routes/v1/connections_hevy.py`
+- `backend/app/constants/workout_types/` (Hevy mappings if any)
+- `backend/migrations/versions/*hevy*`
+- `docs/providers/hevy.mdx`
+
+**Summary:** Full Hevy integration: strategy, workouts sync, `POST /users/{user_id}/connections/hevy`, `provider_extensions` for rich workout UI payloads.
+
+**Suggested title:** `feat(backend): add Hevy workout provider (API key)`
+
+**Test plan:**
+
+- `tests/providers/hevy/test_hevy_workouts.py`
+- `tests/api/v1/test_connections.py` (Hevy connect cases)
+
+**Upstream alignment:** Provider guide already documents the API-key pattern; use `connections_hevy.py` (not shared `connections.py`).
+
+---
+
+## What not to upstream
+
+| Feature | Reason |
+|---------|--------|
+| MCP GitHub OAuth connector | Fork deployment model; upstream has separate MCP HTTP transport branch |
+| `parse_events_range_datetime` / `default_calendar_timezone` | Fork API semantics; propose separately if product agrees on calendar-day query params |
+| Coach Telegram agent | Separate app under `coach/` |
+| Railway MCP deployment doc | Fork ops doc (`deployment/railway-mcp`) |
+
+---
+
+## Opening PRs against upstream
+
+1. Create a branch from fresh `the-momentum/open-wearables` `main` (not this fork’s `main` if it contains unrelated commits).
+2. Cherry-pick or replay only the commits for one PR scope above.
+3. Push to your GitHub fork and open PR to `the-momentum/open-wearables:main`.
+4. After merge upstream, `git fetch origin && git merge origin/main` on this fork.

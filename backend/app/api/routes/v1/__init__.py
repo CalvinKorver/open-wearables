@@ -5,6 +5,7 @@ from .applications import router as applications_router
 from .archival import router as archival_router
 from .auth import router as auth_router
 from .connections import router as connections_router
+from .connections_hevy import router as connections_hevy_router
 from .dashboard import router as dashboard_router
 from .data_sources import router as data_sources_router
 from .deprecated_webhooks import router as deprecated_webhooks_router
@@ -37,6 +38,7 @@ v1_router = APIRouter()
 # --- External: 3rd party integration endpoints ---
 v1_router.include_router(users_router, tags=["External: Users"])
 v1_router.include_router(connections_router, tags=["External: Connections"])
+v1_router.include_router(connections_hevy_router, tags=["External: Connections"])
 v1_router.include_router(summaries_router, tags=["External: Summaries"])
 v1_router.include_router(timeseries_router, tags=["External: Timeseries"])
 v1_router.include_router(events_router, tags=["External: Events"])

@@ -22,18 +22,34 @@ from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.postgres import PostgresContainer
 from testcontainers.redis import RedisContainer
 
-from app.config import settings
-from app.database import BaseDbModel, _get_db_dependency
-from app.integrations.redis_client import get_redis_client
-from app.main import api
-from app.models import SeriesTypeDefinition
-from app.schemas.enums import SERIES_TYPE_DEFINITIONS
-from tests import factories
-
 # Set test environment before importing app modules
 os.environ["ENV"] = "test"
 os.environ["SECRET_KEY"] = "test-secret-key-for-testing-only"
 os.environ["MASTER_KEY"] = "dGVzdC1tYXN0ZXIta2V5LWZvci10ZXN0aW5nLW9ubHk="  # base64 test key
+os.environ.setdefault("API_BASE_URL", "http://localhost:8000")
+_TEST_OAUTH_CLIENT_ID = "test-oauth-client-id"
+_TEST_OAUTH_CLIENT_SECRET = "test-oauth-client-secret"
+for _provider in (
+    "GARMIN",
+    "POLAR",
+    "SUUNTO",
+    "STRAVA",
+    "ULTRAHUMAN",
+    "OURA",
+    "WHOOP",
+    "FITBIT",
+    "WAHOO",
+):
+    os.environ.setdefault(f"{_provider}_CLIENT_ID", _TEST_OAUTH_CLIENT_ID)
+    os.environ.setdefault(f"{_provider}_CLIENT_SECRET", _TEST_OAUTH_CLIENT_SECRET)
+
+from app.config import settings  # noqa: E402
+from app.database import BaseDbModel, _get_db_dependency  # noqa: E402
+from app.integrations.redis_client import get_redis_client  # noqa: E402
+from app.main import api  # noqa: E402
+from app.models import SeriesTypeDefinition  # noqa: E402
+from app.schemas.enums import SERIES_TYPE_DEFINITIONS  # noqa: E402
+from tests import factories  # noqa: E402
 
 
 @pytest.fixture(scope="session")
