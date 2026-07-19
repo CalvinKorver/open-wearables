@@ -72,6 +72,8 @@ def sync_sdk_data(
     workouts_count = len(data.workouts)
     sleep_count = len(data.sleep)
 
+    total_items = records_count + workouts_count + sleep_count
+
     # Log initial batch receipt with counts
     log_structured(
         logger,
@@ -84,8 +86,25 @@ def sync_sdk_data(
         records_count=records_count,
         workouts_count=workouts_count,
         sleep_count=sleep_count,
-        total_items=records_count + workouts_count + sleep_count,
+        total_items=total_items,
+        empty_batch=total_items == 0,
     )
+
+    # Empty uploads are not errors, but they explain "sync succeeded / no new sleep".
+    if total_items == 0 or sleep_count == 0:
+        log_structured(
+            logger,
+            "warning" if total_items == 0 else "info",
+            f"{provider.capitalize()} sync batch has no sleep segments",
+            action=f"{provider}_sdk_batch_no_sleep",
+            batch_id=batch_id,
+            user_id=user_id,
+            provider=provider,
+            records_count=records_count,
+            workouts_count=workouts_count,
+            sleep_count=sleep_count,
+            total_items=total_items,
+        )
 
     content_str = body.model_dump_json()
 
