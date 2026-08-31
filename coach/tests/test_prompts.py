@@ -6,9 +6,11 @@ from app.agent.prompts import ALLOWED_TOOLS, SYSTEM_PROMPT, user_prompt
 def test_user_prompt_contains_iso_date_and_user_id():
     text = user_prompt(date(2026, 5, 7), "abc-123")
     assert "2026-05-07" in text
+    assert "2026-05-08" in text  # sleep wake date is the following morning
     assert "abc-123" in text
     assert "start_date" in text
     assert "end_date" in text
+    assert "get_sleep_summary" in text
     assert "User local timezone (IANA):" in text
     assert "America/Los_Angeles" in text
 
@@ -20,9 +22,9 @@ def test_user_prompt_uses_same_date_for_start_and_end():
 
 
 def test_allowed_tools_subset():
-    assert ALLOWED_TOOLS == frozenset({"get_workout_events"})
+    assert ALLOWED_TOOLS == frozenset({"get_workout_events", "get_sleep_summary"})
 
 
 def test_system_prompt_mentions_required_constraints():
-    for token in ["HTML", "user_id", "yesterday", "Telegram", "<b>", "start_local", "IANA"]:
+    for token in ["HTML", "user_id", "yesterday", "Telegram", "<b>", "start_local", "IANA", "sleep"]:
         assert token in SYSTEM_PROMPT

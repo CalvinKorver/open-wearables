@@ -27,7 +27,14 @@ async def run_for_date(local_date: date, *, force: bool = False) -> None:
         logger.info("Briefing for %s already sent; skipping (use --force to override)", local_date)
         return
 
-    logger.info("Generating briefing for %s", local_date)
+    logger.info(
+        "Generating briefing for %s force=%s tz=%s user_id=%s api=%s",
+        local_date,
+        force,
+        settings.briefing_timezone,
+        settings.ow_user_id,
+        settings.open_wearables_api_url,
+    )
     try:
         async with open_mcp_client() as session:
             text = await generate_briefing(session, local_date)
@@ -46,7 +53,12 @@ async def run_for_date(local_date: date, *, force: bool = False) -> None:
         raise
 
     db.mark_sent(local_date, message_id)
-    logger.info("Briefing for %s delivered (message_id=%s)", local_date, message_id)
+    logger.info(
+        "Briefing for %s delivered message_id=%s chars=%s",
+        local_date,
+        message_id,
+        len(text),
+    )
 
 
 async def run_daily() -> None:

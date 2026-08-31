@@ -56,7 +56,7 @@ class Settings(BaseSettings):
         description="IANA timezone for scheduling the daily briefing",
     )
     briefing_time: str = Field(
-        default="07:00",
+        default="11:00",
         description="Local time for the daily briefing in HH:MM 24-hour format",
     )
 

@@ -19,7 +19,7 @@ def test_build_tool_params_filters_to_allowed_tools():
     params = agent_loop._build_tool_params(specs)
 
     names = {p["name"] for p in params}
-    assert names == {"get_workout_events"}
+    assert names == {"get_workout_events", "get_sleep_summary"}
 
 
 def test_build_tool_params_supplies_default_schema_when_missing():
@@ -66,6 +66,24 @@ class _FakeSession:
     async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         self.calls.append((name, arguments))
         return self._response
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_allows_sleep_summary():
+    tu = ToolUseBlock(
+        type="tool_use",
+        id="tu_sleep",
+        name="get_sleep_summary",
+        input={"user_id": "u", "start_date": "2026-05-08", "end_date": "2026-05-08"},
+    )
+    session = _FakeSession({"records": [{"date": "2026-05-08", "duration_minutes": 480}]})
+
+    result = await agent_loop._dispatch_tool(session, tu)
+
+    assert result.get("is_error") is False
+    assert session.calls == [
+        ("get_sleep_summary", {"user_id": "u", "start_date": "2026-05-08", "end_date": "2026-05-08"}),
+    ]
 
 
 @pytest.mark.asyncio

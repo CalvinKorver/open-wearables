@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Send a one-off Telegram briefing (same path as the scheduled coach job).
+#
+# Usage (from anywhere):
+#   coach/scripts/send-test-brief
+#   coach/scripts/send-test-brief --date 2026-08-30
+#   coach/scripts/send-test-brief --date 2026-08-30 --no-force
+#
+# Defaults to yesterday in BRIEFING_TIMEZONE and --force so repeats are easy.
+set -euo pipefail
+
+COACH_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="$(cd "$COACH_DIR/.." && pwd)"
+cd "$COACH_DIR"
+
+find_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    command -v uv
+    return
+  fi
+  if [[ -x "$HOME/.local/bin/uv" ]]; then
+    echo "$HOME/.local/bin/uv"
+    return
+  fi
+  echo "uv not found. Install it or add ~/.local/bin to PATH." >&2
+  exit 127
+}
+
+# Prefer an already-exported key; otherwise reuse the working backend key for local tests.
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+  backend_env="$REPO_DIR/backend/config/.env"
+  if [[ -f "$backend_env" ]]; then
+    backend_key="$(grep -E '^ANTHROPIC_API_KEY=' "$backend_env" | head -1 | cut -d= -f2-)"
+    if [[ -n "$backend_key" ]]; then
+      export ANTHROPIC_API_KEY="$backend_key"
+    fi
+  fi
+fi
+
+UV="$(find_uv)"
+FORCE=1
+DATE_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-force)
+      FORCE=0
+      shift
+      ;;
+    --force | -f)
+      FORCE=1
+      shift
+      ;;
+    --date | -d)
+      DATE_ARGS+=(--date "$2")
+      shift 2
+      ;;
+    --date=* | -d=*)
+      DATE_ARGS+=(--date "${1#*=}")
+      shift
+      ;;
+    -h | --help)
+      sed -n '2,12p' "$0"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+CMD=("$UV" run --directory "$COACH_DIR" brief)
+if [[ ${#DATE_ARGS[@]} -gt 0 ]]; then
+  CMD+=("${DATE_ARGS[@]}")
+fi
+if [[ "$FORCE" -eq 1 ]]; then
+  CMD+=(--force)
+fi
+
+exec "${CMD[@]}"

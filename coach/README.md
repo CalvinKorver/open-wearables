@@ -68,7 +68,7 @@ Optional with defaults:
 - `OW_MCP_DIR` (default `/opt/mcp` in the container, set to `../mcp` for local dev)
 - `ANTHROPIC_MODEL` (default `claude-sonnet-4-5`)
 - `BRIEFING_TIMEZONE` (default `America/Los_Angeles`)
-- `BRIEFING_TIME` (default `07:00`)
+- `BRIEFING_TIME` (default `11:00`)
 - `COACH_DB_PATH` (default `./coach.db`; set to `/data/coach.db` in the container)
 - `LOG_LEVEL` (default `INFO`)
 
@@ -98,7 +98,20 @@ The container bundles both `coach/` and `mcp/`, so it can spawn the MCP server a
 
 ## Run a briefing on demand
 
-For testing, debugging, or backfilling a missed day:
+For testing, debugging, or backfilling a missed day, use the wrapper (finds `uv` and `--force`s by default):
+
+```bash
+# from the repo root — yesterday in BRIEFING_TIMEZONE
+./coach/scripts/send-test-brief
+
+# a specific date
+./coach/scripts/send-test-brief --date 2026-08-30
+
+# skip re-send if that date already went out
+./coach/scripts/send-test-brief --date 2026-08-30 --no-force
+```
+
+Or call the CLI directly from `coach/`:
 
 ```bash
 # brief yesterday in BRIEFING_TIMEZONE
@@ -114,7 +127,7 @@ uv run brief --date 2026-05-07 --force
 In Docker:
 
 ```bash
-docker compose exec coach uv run --no-sync brief --date 2026-05-07
+docker compose exec coach uv run --no-sync brief --date 2026-05-07 --force
 ```
 
 ## Tests
@@ -149,9 +162,17 @@ The MCP server reads its own env from the variables the coach passes in. Make su
 
 The briefing is sent with `parse_mode=HTML`. If the model emits invalid HTML (e.g. an unbalanced `<b>` tag), Telegram returns 400. The coach automatically strips tags and re-sends as plain text, so the briefing still arrives. You'll see a `WARNING` in the logs noting the fallback. If the plain-text retry also fails, the briefing run is marked failed and a plain-text alert is sent to the same chat.
 
-### The coach was down at 7 AM and is now running at 8:30 AM
+### The coach was down at 11 AM and is now running at 12:30 PM
 
 APScheduler's `misfire_grace_time` is 60 minutes. If the coach starts up within an hour of the missed trigger, the briefing fires immediately. If you missed the window, run `uv run brief` manually.
+
+### "uv: command not found" on macOS
+
+`uv` is installed at `~/.local/bin/uv`. Use that path, or open a new terminal so `~/.zprofile` puts it on PATH:
+
+```bash
+~/.local/bin/uv run brief --date 2026-08-30 --force
+```
 
 ### "uv: command not found" inside the container at startup
 
