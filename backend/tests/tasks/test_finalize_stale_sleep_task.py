@@ -60,7 +60,7 @@ class TestFinalizeStaleSleepsTask:
         # Arrange
         user_id = str(uuid4())
         now = datetime.now(timezone.utc)
-        stale_timestamp = now - timedelta(hours=2)  # Older than 1 hour threshold
+        stale_timestamp = now - timedelta(hours=2)  # Older than 30-minute threshold
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)
@@ -112,7 +112,7 @@ class TestFinalizeStaleSleepsTask:
         # Arrange
         user_id = str(uuid4())
         now = datetime.now(timezone.utc)
-        recent_timestamp = now - timedelta(minutes=30)  # Less than 1 hour threshold
+        recent_timestamp = now - timedelta(minutes=15)  # Less than 30-minute threshold
 
         mock_session_local.return_value.__enter__ = MagicMock(return_value=db)
         mock_session_local.return_value.__exit__ = MagicMock(return_value=None)

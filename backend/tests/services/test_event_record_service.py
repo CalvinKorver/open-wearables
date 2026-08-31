@@ -379,7 +379,7 @@ class TestEventRecordServiceGetCountByWorkoutType:
 class TestCreateOrMergeSleep:
     """Test create_or_merge_sleep adjacent session merging."""
 
-    THRESHOLD = 120  # minutes, matching settings.sleep_end_gap_minutes default
+    THRESHOLD = 30  # minutes, matching settings.sleep_end_gap_minutes default
 
     def _dt(self, hour: int, minute: int = 0, day: int = 21) -> datetime:
         return datetime(2026, 3, day, hour, minute, tzinfo=timezone.utc)
@@ -460,8 +460,8 @@ class TestCreateOrMergeSleep:
             sleep_time_in_bed_minutes=30,
         )
 
-        # New main session: 22:25–07:40 (gap of ~59 min from existing end)
-        start, end = self._dt(22, 25), self._dt(7, 40, day=22)
+        # New main session: 21:50–07:40 (gap of ~24 min from existing end)
+        start, end = self._dt(21, 50), self._dt(7, 40, day=22)
         record = self._record(data_source, start, end)
         detail = self._detail(record.id, deep=90, light=200, rem=80, awake=30, in_bed=430)
 
@@ -494,7 +494,7 @@ class TestCreateOrMergeSleep:
             sleep_time_in_bed_minutes=30,
         )
 
-        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+        record = self._record(data_source, self._dt(21, 50), self._dt(7, 40, day=22))
         detail = self._detail(record.id, deep=90, light=200, rem=80, awake=30, in_bed=430)
 
         result = event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
@@ -529,7 +529,7 @@ class TestCreateOrMergeSleep:
             sleep_time_in_bed_minutes=30,
         )
 
-        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+        record = self._record(data_source, self._dt(21, 50), self._dt(7, 40, day=22))
         # 80% efficiency, 430 min in bed
         detail = self._detail(record.id, in_bed=430, efficiency="80.00")
         # Existing: 27% efficiency, 30 min in bed
@@ -559,7 +559,7 @@ class TestCreateOrMergeSleep:
         SleepDetailsFactory(event_record=existing)
         old_id = existing.id
 
-        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+        record = self._record(data_source, self._dt(21, 50), self._dt(7, 40, day=22))
         detail = self._detail(record.id)
 
         event_record_service.create_or_merge_sleep(db, user.id, record, detail, self.THRESHOLD)
@@ -580,7 +580,7 @@ class TestCreateOrMergeSleep:
         )
         SleepDetailsFactory(event_record=existing)
 
-        # New session starts 3 hours after existing ends — beyond 120-min threshold
+        # New session starts 3 hours after existing ends — beyond 30-min threshold
         record = self._record(data_source, self._dt(11, 0), self._dt(12, 0))
         detail = self._detail(record.id)
 
@@ -753,10 +753,10 @@ class TestCreateOrMergeSleep:
 
         stage_late = SleepStage(
             stage="deep",
-            start_time=self._dt(22, 30),
-            end_time=self._dt(23, 30),
+            start_time=self._dt(21, 55),
+            end_time=self._dt(22, 25),
         )
-        record = self._record(data_source, self._dt(22, 25), self._dt(7, 40, day=22))
+        record = self._record(data_source, self._dt(21, 50), self._dt(7, 40, day=22))
         detail = self._detail(record.id)
         detail = detail.model_copy(update={"sleep_stages": [stage_late]})
 
