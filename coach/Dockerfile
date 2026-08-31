@@ -29,7 +29,6 @@ FROM python:3.13-slim
     COPY --from=builder /opt/mcp /opt/mcp
 
     RUN mkdir -p /data
-    VOLUME /data
 
     WORKDIR /opt/coach
 
