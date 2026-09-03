@@ -1,17 +1,23 @@
 """SQLite storage for the coach service.
 
-The only persisted state for v1 is a `briefing_run` row per local date, used as
-an idempotency guard so a single date can never be briefed twice.
+Persisted state:
+- ``briefing_run`` — one row per local date, an idempotency guard so a date is
+  never briefed twice unless ``--force``.
+- ``telegram_state`` — getUpdates offset so restarts do not re-handle old DMs.
+- ``conversation_turn`` — recent Telegram chat history for multi-turn replies.
 """
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from sqlalchemy import Date, DateTime, String, create_engine
+from sqlalchemy import Date, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
+
+MAX_CONVERSATION_TURNS = 20
+MAX_TURN_CHARS = 8000
 
 
 class BriefingStatus(StrEnum):
@@ -33,6 +39,24 @@ class BriefingRun(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     message_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
+
+class TelegramState(Base):
+    """Singleton row (id=1) holding the next getUpdates offset."""
+
+    __tablename__ = "telegram_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    next_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class ConversationTurn(Base):
+    __tablename__ = "conversation_turn"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 def _build_engine_url(db_path: str) -> str:
@@ -121,3 +145,50 @@ def mark_failed(local_date: date, error: str) -> None:
 def get_run(local_date: date) -> BriefingRun | None:
     with session() as s:
         return s.get(BriefingRun, local_date)
+
+
+def get_telegram_offset() -> int | None:
+    with session() as s:
+        row = s.get(TelegramState, 1)
+        return row.next_offset if row is not None else None
+
+
+def set_telegram_offset(offset: int) -> None:
+    with session() as s:
+        row = s.get(TelegramState, 1)
+        if row is None:
+            s.add(TelegramState(id=1, next_offset=offset))
+        else:
+            row.next_offset = offset
+        s.commit()
+
+
+def get_conversation_turns(limit: int = MAX_CONVERSATION_TURNS) -> list[tuple[str, str]]:
+    """Return recent (role, content) turns in chronological order."""
+    with session() as s:
+        rows = s.query(ConversationTurn).order_by(ConversationTurn.id.desc()).limit(limit).all()
+        rows.reverse()
+        return [(row.role, row.content) for row in rows]
+
+
+def append_conversation_turn(role: str, content: str) -> None:
+    with session() as s:
+        s.add(
+            ConversationTurn(
+                role=role,
+                content=content[:MAX_TURN_CHARS],
+                created_at=utcnow(),
+            )
+        )
+        s.commit()
+        ids = [row.id for row in s.query(ConversationTurn.id).order_by(ConversationTurn.id.desc()).all()]
+        extra = ids[MAX_CONVERSATION_TURNS:]
+        if extra:
+            s.query(ConversationTurn).filter(ConversationTurn.id.in_(extra)).delete(synchronize_session=False)
+            s.commit()
+
+
+def clear_conversation() -> None:
+    with session() as s:
+        s.query(ConversationTurn).delete()
+        s.commit()

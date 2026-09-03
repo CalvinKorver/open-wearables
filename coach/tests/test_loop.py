@@ -7,6 +7,7 @@ from anthropic.types import TextBlock, ToolUseBlock
 
 from app.agent import loop as agent_loop
 from app.agent.mcp_client import ToolSpec
+from app.agent.prompts import CHAT_ALLOWED_TOOLS
 
 
 def test_build_tool_params_filters_to_allowed_tools():
@@ -115,6 +116,50 @@ async def test_dispatch_tool_blocks_unknown_tool():
     assert result["is_error"] is True
     assert "not available" in result["content"]
     assert session.calls == []
+
+
+def test_history_to_messages_merges_and_drops_leading_assistant():
+    messages = agent_loop.history_to_messages(
+        [
+            ("assistant", "stale"),
+            ("user", "one"),
+            ("user", "two"),
+            ("assistant", "ok"),
+            ("system", "ignore me"),
+            ("assistant", ""),
+        ]
+    )
+    assert messages == [
+        {"role": "user", "content": "one\ntwo"},
+        {"role": "assistant", "content": "ok"},
+    ]
+
+
+def test_build_tool_params_can_use_chat_allowlist():
+    specs = [
+        ToolSpec(name="get_activity_summary", description="a", input_schema={"type": "object"}),
+        ToolSpec(name="get_users", description="u", input_schema={}),
+        ToolSpec(name="get_workout_events", description="w", input_schema={"type": "object"}),
+    ]
+    params = agent_loop._build_tool_params(specs, CHAT_ALLOWED_TOOLS)
+    names = {p["name"] for p in params}
+    assert names == {"get_activity_summary", "get_workout_events"}
+
+
+@pytest.mark.asyncio
+async def test_dispatch_tool_allows_activity_when_chat_allowlist():
+    tu = ToolUseBlock(
+        type="tool_use",
+        id="tu_act",
+        name="get_activity_summary",
+        input={"user_id": "u", "start_date": "2026-05-01", "end_date": "2026-05-07"},
+    )
+    session = _FakeSession({"records": []})
+    result = await agent_loop._dispatch_tool(session, tu, CHAT_ALLOWED_TOOLS)
+    assert result.get("is_error") is False
+    assert session.calls == [
+        ("get_activity_summary", {"user_id": "u", "start_date": "2026-05-01", "end_date": "2026-05-07"}),
+    ]
 
 
 @pytest.mark.asyncio

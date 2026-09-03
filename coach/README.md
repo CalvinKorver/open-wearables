@@ -1,28 +1,31 @@
 # Open Wearables Coach
 
-Personal AI coach that sends a daily Telegram briefing summarizing yesterday's workouts and health metrics from Open Wearables.
+Personal AI health coach over Telegram. It sends a daily briefing of yesterday's workouts and sleep, and it answers follow-up questions in the same chat using your Open Wearables data.
 
-The coach is a small standalone Python service. It runs APScheduler in-process, spawns the Open Wearables MCP server (see [`../mcp/`](../mcp/)) as a stdio subprocess to fetch data, asks Claude to summarize, and posts the result to a Telegram chat.
+The coach is a small standalone Python service. It runs APScheduler in-process, long-polls Telegram `getUpdates` (no public webhook URL), spawns the Open Wearables MCP server (see [`../mcp/`](../mcp/)) as a stdio subprocess to fetch data, asks Claude to answer, and posts the result back to your chat.
+
+This is the **Telegram health agent** for a single user. It is separate from [Claude Managed Agents](../docs/mcp-server/managed-agents-remote.mdx), which talk to a remotely deployed MCP over HTTPS.
 
 ## How it works
 
 ```text
-APScheduler (cron in your TZ)
-        |
-        v
-briefing.run_daily()
-        |
-        v
+Telegram (you)
+   |  getUpdates long-poll (inbound) + sendMessage (outbound)
+   v
+coach/
+   |-- APScheduler daily briefing
+   |-- chat replies (/brief, /help, free-text questions)
+   v
 Claude agent loop
-        |
-        v
+   v
 fastmcp.Client (stdio) ---> Open Wearables MCP ---> OW backend REST API
-        |
-        v
-Telegram Bot API ---> your phone
 ```
 
-State persisted to a small SQLite file (`briefing_run` table) so the same date can never be sent twice.
+SQLite state (`coach.db`):
+
+- `briefing_run` — one row per local date so a briefing is not sent twice
+- `telegram_state` — `getUpdates` offset so restarts skip already-seen messages
+- `conversation_turn` — recent chat history for multi-turn follow-ups
 
 ## Prerequisites
 
@@ -42,9 +45,18 @@ State persisted to a small SQLite file (`briefing_run` table) so the same date c
    curl "https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates" | jq '.result[].message.chat.id'
    ```
 
-   Put that id in `TELEGRAM_CHAT_ID`.
+   Put that id in `TELEGRAM_CHAT_ID`. Only that chat is answered; other senders are ignored.
 
-That is the only manual step. The coach uses outbound `sendMessage` only; no public webhook URL is needed in v1.
+4. Disable privacy mode if you want the bot in a group (optional): BotFather → `/setprivacy` → Disable. For a 1:1 DM this is unnecessary.
+
+At startup the coach calls `getMe` to verify the token, then long-polls `getUpdates`. No public webhook URL is required.
+
+Once it is running, DM the bot:
+
+- `/help` — commands
+- `/brief` — send yesterday's briefing now
+- `/clear` — forget recent chat history
+- or ask in plain language, e.g. "How did I sleep this week?"
 
 ## Configure
 
@@ -138,7 +150,7 @@ uv sync --group dev
 uv run pytest -v
 ```
 
-The tests do not hit Anthropic, Telegram, or the Open Wearables API; they cover prompt building, idempotency, MarkdownV2 escaping, and the agent loop's tool dispatch.
+The tests do not hit Anthropic, Telegram, or the Open Wearables API. They cover prompt building, briefing idempotency, Telegram HTML and update parsing, `getUpdates` offset handling, chat commands, conversation memory, and the agent loop's tool dispatch.
 
 ## Code quality
 
@@ -178,12 +190,23 @@ APScheduler's `misfire_grace_time` is 60 minutes. If the coach starts up within 
 
 The image installs `uv` from the official upstream image. Rebuild with `docker compose build coach` if your image is stale.
 
-## What's next (v2)
+### Bot does not answer DMs
 
-- Two-way replies: inbound webhook + multi-turn conversation memory
-- Long-lived facts and goals to personalize the briefings
+- Confirm the process logged `Telegram bot connected username=...` at startup (`getMe` succeeded).
+- Confirm `TELEGRAM_CHAT_ID` matches the chat you are messaging (the coach ignores every other chat).
+- After a deploy, pending DMs sent while the coach was down are drained and not answered, so send a new message.
+- Watch logs for `Telegram getUpdates failed` — token errors, network, or Telegram 429s back off and retry.
+
+### Replies ignore conversation context
+
+Send `/clear` and ask again. Only the last 20 turns are kept.
+
+## What's next
+
+- Long-lived facts and goals to personalize briefings
 - Multiple users and channels (Twilio SMS, WhatsApp, etc.)
 - Switching the OW MCP transport from stdio to HTTP/SSE if the coach grows beyond a single user
+- Optional relay onto a Claude Managed Agents session instead of the in-process tool-use loop
 
 ## License
 

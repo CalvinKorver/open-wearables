@@ -11,8 +11,10 @@ def _fresh_db():
     db.init_db()
     with db.session() as s:
         s.query(db.BriefingRun).delete()
+        s.query(db.ConversationTurn).delete()
+        s.query(db.TelegramState).delete()
         s.commit()
-    yield
+    return
 
 
 def test_claim_run_creates_row_when_none_exists():
@@ -74,3 +76,28 @@ def test_mark_failed_truncates_long_error():
     assert row.status == BriefingStatus.FAILED
     assert row.error is not None
     assert len(row.error) <= 2048
+
+
+def test_telegram_offset_round_trip():
+    assert db.get_telegram_offset() is None
+    db.set_telegram_offset(42)
+    assert db.get_telegram_offset() == 42
+    db.set_telegram_offset(43)
+    assert db.get_telegram_offset() == 43
+
+
+def test_conversation_turns_are_chronological_and_pruned():
+    for i in range(db.MAX_CONVERSATION_TURNS + 3):
+        db.append_conversation_turn("user" if i % 2 == 0 else "assistant", f"turn-{i}")
+
+    turns = db.get_conversation_turns()
+    assert len(turns) == db.MAX_CONVERSATION_TURNS
+    assert turns[0][1] == "turn-3"
+    assert turns[-1][1] == f"turn-{db.MAX_CONVERSATION_TURNS + 2}"
+
+
+def test_clear_conversation_deletes_all_turns():
+    db.append_conversation_turn("user", "hi")
+    db.append_conversation_turn("assistant", "hello")
+    db.clear_conversation()
+    assert db.get_conversation_turns() == []
