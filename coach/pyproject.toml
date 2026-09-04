@@ -68,3 +68,6 @@ ignore = [
     "RET503", # implicit-return
     "COM812", # trailing-comma (conflicts with ruff format)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN", "PT018"]
