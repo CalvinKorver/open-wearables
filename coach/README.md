@@ -55,7 +55,10 @@ Once it is running, DM the bot:
 
 - `/help` — commands
 - `/brief` — send yesterday's briefing now
-- `/clear` — forget recent chat history
+- `/goal <text>` / `/fact <text>` — save durable memory used in chat and briefings
+- `/memory` — list goals and facts
+- `/forget <id|goals|facts|all>` — remove durable memory
+- `/clear` — forget recent chat history (not goals/facts)
 - or ask in plain language, e.g. "How did I sleep this week?"
 
 ## Configure
@@ -199,11 +202,10 @@ The image installs `uv` from the official upstream image. Rebuild with `docker c
 
 ### Replies ignore conversation context
 
-Send `/clear` and ask again. Only the last 20 turns are kept.
+Send `/clear` and ask again. Only the last 20 turns are kept. Durable goals/facts are separate — use `/memory` and `/forget`.
 
 ## What's next
 
-- Long-lived facts and goals to personalize briefings
 - Multiple users and channels (Twilio SMS, WhatsApp, etc.)
 - Switching the OW MCP transport from stdio to HTTP/SSE if the coach grows beyond a single user
 - Optional relay onto a Claude Managed Agents session instead of the in-process tool-use loop

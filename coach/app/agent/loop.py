@@ -29,12 +29,20 @@ from app.agent.prompts import (
     user_prompt,
 )
 from app.config import settings
+from app.storage import db
 
 logger = getLogger(__name__)
 
 MAX_ITERATIONS = 6
 MAX_CHAT_ITERATIONS = 8
 MAX_TOKENS = 2048
+
+
+def _with_memory(system: str) -> str:
+    block = db.format_memory_block()
+    if not block:
+        return system
+    return f"{system}\n{block}\n"
 
 
 def _build_tool_params(
@@ -177,13 +185,14 @@ def history_to_messages(history: list[tuple[str, str]]) -> list[MessageParam]:
 
 def _chat_system_prompt() -> str:
     now = datetime.now(settings.tz)
-    return (
+    base = (
         f"{CHAT_SYSTEM_PROMPT}\n"
         f"user_id: {settings.ow_user_id}\n"
         f"User local timezone (IANA): {settings.briefing_timezone}\n"
         f"Today's local date: {now.date().isoformat()}\n"
         f"Current local time: {now.strftime('%H:%M')}\n"
     )
+    return _with_memory(base)
 
 
 async def _run_agent(
@@ -255,7 +264,7 @@ async def generate_briefing(session: McpSession, local_date: date) -> str:
     """Run the agent loop and return the final assistant text for `local_date`."""
     return await _run_agent(
         session,
-        system=SYSTEM_PROMPT,
+        system=_with_memory(SYSTEM_PROMPT),
         allowed_tools=ALLOWED_TOOLS,
         messages=[{"role": "user", "content": user_prompt(local_date, settings.ow_user_id)}],
         max_iterations=MAX_ITERATIONS,

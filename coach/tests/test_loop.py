@@ -8,6 +8,8 @@ from anthropic.types import TextBlock, ToolUseBlock
 from app.agent import loop as agent_loop
 from app.agent.mcp_client import ToolSpec
 from app.agent.prompts import CHAT_ALLOWED_TOOLS
+from app.storage import db
+from app.storage.db import MemoryKind
 
 
 def test_build_tool_params_filters_to_allowed_tools():
@@ -175,3 +177,23 @@ async def test_dispatch_tool_marks_error_when_tool_returns_error():
     result = await agent_loop._dispatch_tool(session, tu)
 
     assert result["is_error"] is True
+
+
+def test_with_memory_omits_block_when_empty() -> None:
+    db.init_db()
+    with db.session() as s:
+        s.query(db.MemoryItem).delete()
+        s.commit()
+    assert agent_loop._with_memory("BASE") == "BASE"
+
+
+def test_chat_system_prompt_includes_durable_profile() -> None:
+    db.init_db()
+    with db.session() as s:
+        s.query(db.MemoryItem).delete()
+        s.commit()
+    db.add_memory(MemoryKind.GOAL, "Race 70.3")
+    prompt = agent_loop._chat_system_prompt()
+    assert "Durable profile" in prompt
+    assert "Race 70.3" in prompt
+    assert "user_id:" in prompt

@@ -20,11 +20,11 @@ The **coach** service (`coach/` in this repository) is a single-user Telegram he
 ## What you get
 
 - Daily briefing at `BRIEFING_TIME` in `BRIEFING_TIMEZONE`
-- Inbound DMs: `/brief`, `/help`, `/clear`, or a natural-language question
+- Inbound DMs: `/brief`, `/goal`, `/fact`, `/memory`, `/forget`, `/clear`, `/help`, or a natural-language question
+- Durable goals and facts (survive `/clear` and restarts); recent multi-turn chat memory (last 20 messages)
 - Only `TELEGRAM_CHAT_ID` is answered; other chats are ignored
 - Long-polling (`getUpdates`) — no public webhook URL
 - Startup `getMe` check so a bad bot token fails immediately
-- Recent multi-turn memory (last 20 messages)
 
 ## Architecture
 
@@ -74,7 +74,11 @@ Expect a log line `Telegram bot connected username=...` then chat with the bot.
 |---------|--------|
 | `/help` or `/start` | List commands |
 | `/brief` | Send yesterday's briefing now (re-sends even if already delivered) |
-| `/clear` | Drop stored conversation turns |
+| `/goal <text>` | Save a durable goal (used in chat + briefings) |
+| `/fact <text>` | Save a durable fact |
+| `/goals` / `/facts` / `/memory` | List durable memory |
+| `/forget <id>` / `/forget goals\|facts\|all` | Remove durable memory |
+| `/clear` | Drop recent conversation turns (not goals/facts) |
 | free text | Answer using sleep, workout, activity, and timeseries MCP tools |
 
 ## Related

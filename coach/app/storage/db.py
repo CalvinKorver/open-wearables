@@ -5,6 +5,7 @@ Persisted state:
   never briefed twice unless ``--force``.
 - ``telegram_state`` — getUpdates offset so restarts do not re-handle old DMs.
 - ``conversation_turn`` — recent Telegram chat history for multi-turn replies.
+- ``memory_item`` — durable goals and facts (survive ``/clear`` and restarts).
 """
 
 from datetime import date, datetime, timezone
@@ -18,12 +19,28 @@ from app.config import settings
 
 MAX_CONVERSATION_TURNS = 20
 MAX_TURN_CHARS = 8000
+MAX_MEMORY_CONTENT_CHARS = 500
+MAX_GOALS = 20
+MAX_FACTS = 40
 
 
 class BriefingStatus(StrEnum):
     PENDING = "pending"
     SENT = "sent"
     FAILED = "failed"
+
+
+class MemoryKind(StrEnum):
+    GOAL = "goal"
+    FACT = "fact"
+
+
+class MemoryFullError(ValueError):
+    """Raised when the per-kind durable memory cap is reached."""
+
+
+class MemoryTooLongError(ValueError):
+    """Raised when durable memory content exceeds the character cap."""
 
 
 class Base(DeclarativeBase):
@@ -57,6 +74,16 @@ class ConversationTurn(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class MemoryItem(Base):
+    __tablename__ = "memory_item"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
 def _build_engine_url(db_path: str) -> str:
@@ -192,3 +219,98 @@ def clear_conversation() -> None:
     with session() as s:
         s.query(ConversationTurn).delete()
         s.commit()
+
+
+def _memory_cap(kind: MemoryKind) -> int:
+    return MAX_GOALS if kind == MemoryKind.GOAL else MAX_FACTS
+
+
+def list_memory(kind: MemoryKind | None = None) -> list[MemoryItem]:
+    """Return durable memory items in chronological order."""
+    with session() as s:
+        q = s.query(MemoryItem).order_by(MemoryItem.id.asc())
+        if kind is not None:
+            q = q.filter(MemoryItem.kind == kind.value)
+        rows = q.all()
+        # Detach for use outside the session.
+        return [
+            MemoryItem(
+                id=row.id,
+                kind=row.kind,
+                content=row.content,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+
+
+def add_memory(kind: MemoryKind, content: str) -> MemoryItem:
+    """Insert a durable goal or fact. Raises ValueError subclasses on validation failure."""
+    text = content.strip()
+    if not text:
+        raise ValueError("Memory content must not be empty")
+    if len(text) > MAX_MEMORY_CONTENT_CHARS:
+        raise MemoryTooLongError(f"Memory text must be at most {MAX_MEMORY_CONTENT_CHARS} characters (got {len(text)})")
+    with session() as s:
+        count = s.query(MemoryItem).filter(MemoryItem.kind == kind.value).count()
+        cap = _memory_cap(kind)
+        if count >= cap:
+            raise MemoryFullError(
+                f"At most {cap} {kind.value}s can be saved (currently {count}). Forget one with /forget <id> first."
+            )
+        now = utcnow()
+        row = MemoryItem(kind=kind.value, content=text, created_at=now, updated_at=now)
+        s.add(row)
+        s.commit()
+        s.refresh(row)
+        return MemoryItem(
+            id=row.id,
+            kind=row.kind,
+            content=row.content,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+
+def delete_memory(item_id: int) -> bool:
+    """Delete one memory item by id. Returns False if it did not exist."""
+    with session() as s:
+        row = s.get(MemoryItem, item_id)
+        if row is None:
+            return False
+        s.delete(row)
+        s.commit()
+        return True
+
+
+def clear_memory(kind: MemoryKind | None = None) -> int:
+    """Delete durable memory items. Returns the number of rows removed."""
+    with session() as s:
+        q = s.query(MemoryItem)
+        if kind is not None:
+            q = q.filter(MemoryItem.kind == kind.value)
+        count = q.count()
+        q.delete(synchronize_session=False)
+        s.commit()
+        return count
+
+
+def format_memory_block() -> str:
+    """Prompt-ready durable profile, or empty string when nothing is stored."""
+    goals = list_memory(MemoryKind.GOAL)
+    facts = list_memory(MemoryKind.FACT)
+    if not goals and not facts:
+        return ""
+    lines = [
+        "Durable profile (user-set; treat as ground truth unless they update it):",
+    ]
+    if goals:
+        lines.append("Goals:")
+        for item in goals:
+            lines.append(f"- (#{item.id}) {item.content}")
+    if facts:
+        lines.append("Facts:")
+        for item in facts:
+            lines.append(f"- (#{item.id}) {item.content}")
+    return "\n".join(lines)

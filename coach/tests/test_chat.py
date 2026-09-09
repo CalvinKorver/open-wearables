@@ -15,6 +15,7 @@ def _fresh_conversation():
     db.init_db()
     with db.session() as s:
         s.query(db.ConversationTurn).delete()
+        s.query(db.MemoryItem).delete()
         s.commit()
     return
 
@@ -63,7 +64,81 @@ async def test_handle_incoming_clear(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.chat.send_reply", fake_reply)
     await handle_incoming(IncomingMessage(1, 9, "1234567", "/clear"))
     assert db.get_conversation_turns() == []
-    assert sent and "Cleared" in sent[0]
+    assert sent and "Cleared recent chat history" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_incoming_goal_and_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+
+    async def fake_reply(text: str, *, reply_to_message_id: int | None = None) -> str:
+        sent.append(text)
+        return "1"
+
+    monkeypatch.setattr("app.chat.send_reply", fake_reply)
+    await handle_incoming(IncomingMessage(1, 9, "1234567", "/goal Race 70.3"))
+    assert sent[-1].startswith("Saved goal #")
+    assert "Race 70.3" in sent[-1]
+
+    await handle_incoming(IncomingMessage(1, 10, "1234567", "/fact Prefer mornings"))
+    await handle_incoming(IncomingMessage(1, 11, "1234567", "/memory"))
+    assert "Goals:" in sent[-1]
+    assert "Race 70.3" in sent[-1]
+    assert "Prefer mornings" in sent[-1]
+    assert db.get_conversation_turns() == []
+
+
+@pytest.mark.asyncio
+async def test_handle_incoming_goal_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+
+    async def fake_reply(text: str, *, reply_to_message_id: int | None = None) -> str:
+        sent.append(text)
+        return "1"
+
+    monkeypatch.setattr("app.chat.send_reply", fake_reply)
+    await handle_incoming(IncomingMessage(1, 9, "1234567", "/goal"))
+    assert sent == ["Usage: /goal <text>"]
+
+
+@pytest.mark.asyncio
+async def test_handle_incoming_forget(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+
+    async def fake_reply(text: str, *, reply_to_message_id: int | None = None) -> str:
+        sent.append(text)
+        return "1"
+
+    monkeypatch.setattr("app.chat.send_reply", fake_reply)
+    await handle_incoming(IncomingMessage(1, 9, "1234567", "/goal Keep"))
+    item_id = db.list_memory()[0].id
+    await handle_incoming(IncomingMessage(1, 10, "1234567", f"/forget {item_id}"))
+    assert sent[-1] == f"Forgot #{item_id}."
+    assert db.list_memory() == []
+
+    await handle_incoming(IncomingMessage(1, 11, "1234567", "/fact A"))
+    await handle_incoming(IncomingMessage(1, 12, "1234567", "/forget facts"))
+    assert "Forgot 1 fact" in sent[-1]
+
+    await handle_incoming(IncomingMessage(1, 13, "1234567", "/forget"))
+    assert "Usage: /forget" in sent[-1]
+
+
+@pytest.mark.asyncio
+async def test_handle_incoming_clear_preserves_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    db.add_memory(db.MemoryKind.GOAL, "Stay")
+    sent: list[str] = []
+
+    async def fake_reply(text: str, *, reply_to_message_id: int | None = None) -> str:
+        sent.append(text)
+        return "1"
+
+    monkeypatch.setattr("app.chat.send_reply", fake_reply)
+    db.append_conversation_turn("user", "hi")
+    await handle_incoming(IncomingMessage(1, 9, "1234567", "/clear"))
+    assert db.get_conversation_turns() == []
+    assert [i.content for i in db.list_memory()] == ["Stay"]
+    assert "Goals and facts are unchanged" in sent[0]
 
 
 @pytest.mark.asyncio

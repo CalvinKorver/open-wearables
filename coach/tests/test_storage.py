@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from app.storage import db
-from app.storage.db import BriefingStatus
+from app.storage.db import BriefingStatus, MemoryFullError, MemoryKind, MemoryTooLongError
 
 
 @pytest.fixture(autouse=True)
@@ -13,6 +13,7 @@ def _fresh_db():
         s.query(db.BriefingRun).delete()
         s.query(db.ConversationTurn).delete()
         s.query(db.TelegramState).delete()
+        s.query(db.MemoryItem).delete()
         s.commit()
     return
 
@@ -101,3 +102,54 @@ def test_clear_conversation_deletes_all_turns():
     db.append_conversation_turn("assistant", "hello")
     db.clear_conversation()
     assert db.get_conversation_turns() == []
+
+
+def test_add_and_list_memory():
+    goal = db.add_memory(MemoryKind.GOAL, "Race 70.3 in October")
+    fact = db.add_memory(MemoryKind.FACT, "Prefer morning workouts")
+    assert goal.id is not None
+    assert fact.kind == MemoryKind.FACT
+    assert [i.content for i in db.list_memory(MemoryKind.GOAL)] == ["Race 70.3 in October"]
+    assert [i.content for i in db.list_memory(MemoryKind.FACT)] == ["Prefer morning workouts"]
+    assert len(db.list_memory()) == 2
+
+
+def test_add_memory_rejects_empty_and_too_long():
+    with pytest.raises(ValueError, match="must not be empty"):
+        db.add_memory(MemoryKind.GOAL, "   ")
+    with pytest.raises(MemoryTooLongError):
+        db.add_memory(MemoryKind.FACT, "x" * (db.MAX_MEMORY_CONTENT_CHARS + 1))
+
+
+def test_add_memory_enforces_caps():
+    for i in range(db.MAX_GOALS):
+        db.add_memory(MemoryKind.GOAL, f"goal-{i}")
+    with pytest.raises(MemoryFullError):
+        db.add_memory(MemoryKind.GOAL, "one too many")
+
+
+def test_delete_and_clear_memory():
+    g = db.add_memory(MemoryKind.GOAL, "A")
+    db.add_memory(MemoryKind.FACT, "B")
+    assert db.delete_memory(g.id) is True
+    assert db.delete_memory(g.id) is False
+    assert db.clear_memory(MemoryKind.FACT) == 1
+    assert db.list_memory() == []
+
+
+def test_clear_conversation_does_not_wipe_memory():
+    db.add_memory(MemoryKind.GOAL, "Keep me")
+    db.append_conversation_turn("user", "hi")
+    db.clear_conversation()
+    assert db.get_conversation_turns() == []
+    assert [i.content for i in db.list_memory()] == ["Keep me"]
+
+
+def test_format_memory_block_empty_and_populated():
+    assert db.format_memory_block() == ""
+    db.add_memory(MemoryKind.GOAL, "Race soon")
+    db.add_memory(MemoryKind.FACT, "No evenings")
+    block = db.format_memory_block()
+    assert "Durable profile" in block
+    assert "Race soon" in block
+    assert "No evenings" in block
