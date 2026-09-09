@@ -9,74 +9,104 @@ Short-term chat history (`conversation_turn`, last 20 turns) stays as-is. Durabl
 
 ## Data model
 
-Extend [`app/storage/db.py`](app/storage/db.py) with:
+Extend [`app/storage/db.py`](app/storage/db.py):
 
-```text
-memory_item
-  id          INTEGER PK autoincrement
-  kind        TEXT NOT NULL   -- "goal" | "fact"
-  content     TEXT NOT NULL
-  created_at  DATETIME NOT NULL
-  updated_at  DATETIME NOT NULL
+```python
+class MemoryKind(StrEnum):
+    GOAL = "goal"
+    FACT = "fact"
+
+class MemoryItem(Base):
+    __tablename__ = "memory_item"
+    id: Mapped[int]  # PK autoincrement
+    kind: Mapped[str]  # MemoryKind value
+    content: Mapped[str]
+    created_at: Mapped[datetime]
+    updated_at: Mapped[datetime]
+
+MAX_MEMORY_CONTENT_CHARS = 500
+MAX_GOALS = 20
+MAX_FACTS = 40
 ```
 
-Helpers: `list_memory`, `add_memory`, `delete_memory`, `clear_memory`.
+API:
 
-Limits:
+| Function | Behavior |
+|----------|----------|
+| `list_memory(kind: MemoryKind \| None = None)` | Chronological list |
+| `add_memory(kind, content)` | Trim; raise `ValueError` if empty; raise `MemoryFullError` / `MemoryTooLongError` on caps |
+| `delete_memory(id: int) -> bool` | False if missing |
+| `clear_memory(kind: MemoryKind \| None = None) -> int` | Rows deleted |
+| `format_memory_block() -> str` | Empty string if no items; else prompt-ready block |
 
-- 500 characters per item
-- 20 goals and 40 facts max (reject adds with a clear Telegram error when full)
-- Schema created via existing `Base.metadata.create_all` on startup
+Schema via existing `init_db()` → `create_all` (SQLite adds new table safely).
 
 `/clear` continues to wipe only `conversation_turn`.
 
 ## Telegram commands
 
-Route in [`app/chat.py`](app/chat.py) before the free-text agent path. Update `HELP_TEXT`.
+Route in [`app/chat.py`](app/chat.py) **before** the free-text agent path (same style as `/help` / `/clear`). Update `HELP_TEXT`.
 
-| Command | Behavior |
-|---------|----------|
-| `/goal <text>` | Add a goal; reply with id + confirmation |
-| `/fact <text>` | Add a fact; reply with id + confirmation |
-| `/goals` | List goals as `#id: content` |
-| `/facts` | List facts |
-| `/memory` | Goals then facts (or empty-state message) |
-| `/forget <id>` | Delete by numeric id |
-| `/forget goals` / `/forget facts` / `/forget all` | Bulk clear; reply with count deleted |
+Parsing after `normalize_command`:
 
-Empty `/goal` or `/fact` returns usage help. These commands do **not** append to `conversation_turn`.
+| Input | Result |
+|-------|--------|
+| `/goal Race 70.3 in October` | Add goal; reply `Saved goal #12: Race 70.3 in October` |
+| `/goal` (no text) | Usage: `Usage: /goal <text>` |
+| `/fact Prefer morning workouts` | Add fact; reply with id |
+| `/fact` | Usage help |
+| `/goals` | `Goals:\n- #12: …` or `No goals saved.` |
+| `/facts` | Same for facts |
+| `/memory` | Goals section then facts section |
+| `/forget 12` | `Forgot #12.` or `No memory item #12.` |
+| `/forget goals` / `/forget facts` / `/forget all` | `Forgot N goal(s).` etc. |
+| `/forget` / bad args | Usage for `/forget` |
+
+Command replies do **not** append to `conversation_turn`. Cap/validation errors become plain Telegram replies (no stack traces).
 
 ## Prompt injection
 
-In [`app/agent/prompts.py`](app/agent/prompts.py) and [`app/agent/loop.py`](app/agent/loop.py):
+Touch [`app/agent/prompts.py`](app/agent/prompts.py) and [`app/agent/loop.py`](app/agent/loop.py):
 
-1. Format a durable-profile block when any items exist, for example:
+1. `format_memory_block()` output example when non-empty:
 
 ```text
 Durable profile (user-set; treat as ground truth unless they update it):
 Goals:
-- (#3) Race Ironman 70.3 on 2026-10-12
+- (#12) Race 70.3 in October
 Facts:
-- (#7) Prefer morning workouts
+- (#3) Prefer morning workouts
 ```
 
-2. Append that block to chat and briefing system prompts.
+2. Append to:
+   - `_chat_system_prompt()` always (omit block if empty)
+   - briefing path in `generate_briefing` / `_run_agent` system string so morning focus respects goals
 
-3. Prompt rules:
+3. Add to `SYSTEM_PROMPT` / `CHAT_SYSTEM_PROMPT` rules:
+   - Personalize using listed goals/facts
+   - Never invent unlisted goals/facts
+   - If asked to remember something, tell the user to use `/goal` or `/fact`
 
-- Personalize advice and briefing focus using listed goals/facts
-- Never invent goals/facts not listed
-- If asked to remember something, tell the user to use `/goal` or `/fact`
+## Files to change (implementation)
 
-## Docs and tests
-
-- Update [`README.md`](README.md) and [`../docs/coach.mdx`](../docs/coach.mdx) command tables
-- Tests: storage CRUD + caps; command routing; `/clear` does not wipe memory; prompt includes memory when present
+| File | Change |
+|------|--------|
+| `coach/app/storage/db.py` | Model + CRUD + caps + `format_memory_block` |
+| `coach/app/chat.py` | Command routing + HELP_TEXT |
+| `coach/app/agent/prompts.py` | Memory-aware prompt rules |
+| `coach/app/agent/loop.py` | Inject memory into chat + briefing system prompts |
+| `coach/tests/test_storage.py` | Memory CRUD/caps; clear conversation ≠ clear memory |
+| `coach/tests/test_chat.py` | Command routing + help text |
+| `coach/tests/test_loop.py` or new `test_memory_prompt.py` | System prompt includes/omits block |
+| `coach/README.md` | Commands + note `/clear` vs durable memory |
+| `docs/coach.mdx` | Same |
+| `coach/DURABLE_MEMORY_PLAN.md` | Remove after implementation lands (or replace with short “how memory works” note) |
 
 ## Out of scope
 
 - Auto-extract from chat
 - Soft-delete / forgotten-item history
+- Edit-in-place (`/goal` always adds; use `/forget` then re-add)
 - Multi-user memory
 - Managed Agents relay
 
@@ -94,3 +124,4 @@ Telegram DM
 ## Approval
 
 Reply on this PR or in chat with **Approve**, **Approve with changes: …**, or **Revise: …**.
+After approval, implementation replaces this proposal with the feature above.
