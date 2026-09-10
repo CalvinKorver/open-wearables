@@ -5,6 +5,44 @@ import type {
 } from '@/lib/api/types';
 import { formatMinutes } from './format';
 
+export type SleepSourceFilter = 'all' | 'autosleep' | 'apple_watch';
+
+export type SleepSourceClass = 'autosleep' | 'apple_watch' | 'other';
+
+/**
+ * Classify a sleep session by its HealthKit source metadata.
+ * `source.provider` holds the app/device name (e.g. "AutoSleep", "Calvin's Apple Watch").
+ */
+export function classifySleepSource(session: SleepSession): SleepSourceClass {
+  const name = (session.source?.provider ?? '').toLowerCase();
+  if (name.includes('autosleep')) return 'autosleep';
+  if (session.source?.device || name.includes('watch')) return 'apple_watch';
+  return 'other';
+}
+
+export function filterSleepSessions(
+  sessions: SleepSession[],
+  filter: SleepSourceFilter
+): SleepSession[] {
+  if (filter === 'all') return sessions;
+  return sessions.filter((s) => classifySleepSource(s) === filter);
+}
+
+const SLEEP_SOURCE_FILTER_LABELS: Record<
+  Exclude<SleepSourceFilter, 'all'>,
+  string
+> = {
+  autosleep: 'AutoSleep',
+  apple_watch: 'Apple Watch',
+};
+
+export function getSleepSourceFilterEmptyMessage(
+  filter: SleepSourceFilter
+): string {
+  if (filter === 'all') return 'No sleep sessions available';
+  return `No ${SLEEP_SOURCE_FILTER_LABELS[filter]} sessions on this page`;
+}
+
 /**
  * Sleep stage type keys
  */

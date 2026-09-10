@@ -49,11 +49,14 @@ import {
 } from '@/lib/utils/format';
 import {
   calculateSleepStats,
+  filterSleepSessions,
   getSleepSessionDetailFields,
+  getSleepSourceFilterEmptyMessage,
   getSleepStageData,
   SLEEP_METRIC_CHART_COLORS,
   SLEEP_STAGE_COLORS,
   SLEEP_STAGE_LABELS,
+  type SleepSourceFilter,
   type SleepStats,
   type SleepStageKey,
 } from '@/lib/utils/sleep';
@@ -73,6 +76,36 @@ interface SleepSectionProps {
 }
 
 const SESSIONS_PER_PAGE = 10;
+
+const SLEEP_SOURCE_FILTERS: { value: SleepSourceFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'autosleep', label: 'AutoSleep' },
+  { value: 'apple_watch', label: 'Apple Watch' },
+];
+
+function SleepSourceFilterPill({
+  label,
+  isSelected,
+  onClick,
+}: {
+  label: string;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+        isSelected
+          ? 'bg-muted-foreground/40 text-foreground border border-zinc-600'
+          : 'bg-muted/50 text-muted-foreground border border-border/60 hover:border-border hover:text-foreground/90'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 // Metric definitions for clickable sleep cards (kept here due to Lucide icon imports)
 type SleepMetricKey = 'efficiency' | 'duration';
@@ -541,6 +574,14 @@ export function SleepSection({
   const handleNextPage = () => pagination.goToNextPage(nextCursor);
   const handlePrevPage = pagination.goToPrevPage;
 
+  const [sleepSourceFilter, setSleepSourceFilter] =
+    useState<SleepSourceFilter>('all');
+
+  const handleSleepSourceFilterChange = (filter: SleepSourceFilter) => {
+    setSleepSourceFilter(filter);
+    pagination.reset();
+  };
+
   // Calculate aggregate statistics from date-range filtered summaries
   const stats = useMemo(
     () => calculateSleepStats(sleepSummaries?.data || []),
@@ -549,6 +590,10 @@ export function SleepSection({
 
   // Get displayed sessions from current page data
   const displayedSessions = sessionsData?.data || [];
+  const filteredSessions = useMemo(
+    () => filterSleepSessions(displayedSessions, sleepSourceFilter),
+    [displayedSessions, sleepSourceFilter]
+  );
   const hasData = displayedSessions.length > 0;
 
   // Selected metric for the chart (default to efficiency)
@@ -743,10 +788,26 @@ export function SleepSection({
         <SectionHeader
           title="Sleep Sessions"
           rightContent={
-            !sessionsLoading && hasData ? (
-              <span className="text-xs text-muted-foreground">
-                Page {pagination.currentPage}
-              </span>
+            !sessionsLoading ? (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  {SLEEP_SOURCE_FILTERS.map((option) => (
+                    <SleepSourceFilterPill
+                      key={option.value}
+                      label={option.label}
+                      isSelected={sleepSourceFilter === option.value}
+                      onClick={() =>
+                        handleSleepSourceFilterChange(option.value)
+                      }
+                    />
+                  ))}
+                </div>
+                {hasData ? (
+                  <span className="text-xs text-muted-foreground">
+                    Page {pagination.currentPage}
+                  </span>
+                ) : null}
+              </div>
             ) : undefined
           }
         />
@@ -754,15 +815,19 @@ export function SleepSection({
         <div className="p-6">
           {sessionsLoading ? (
             <SessionsListSkeleton />
-          ) : displayedSessions.length === 0 ? (
+          ) : !hasData ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No sleep sessions available
+              {getSleepSourceFilterEmptyMessage('all')}
+            </p>
+          ) : filteredSessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              {getSleepSourceFilterEmptyMessage(sleepSourceFilter)}
             </p>
           ) : (
             <div className="space-y-4">
               {/* Sessions List */}
               <div className="space-y-3">
-                {displayedSessions.map((session) => (
+                {filteredSessions.map((session) => (
                   <SleepSessionRow
                     key={session.id}
                     session={session}
