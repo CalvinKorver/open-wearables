@@ -16,30 +16,39 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    open_wearables_api_url: str = Field(
-        default="http://localhost:8000",
-        description="Base URL for the Open Wearables backend API",
-    )
-    open_wearables_api_key: SecretStr = Field(
-        default=SecretStr(""),
-        description="API key for the single user the coach acts on behalf of",
-    )
     ow_user_id: str = Field(
         default="",
         description="UUID of the user the coach should brief",
-    )
-    ow_mcp_dir: str = Field(
-        default="/opt/mcp",
-        description="Path to the OW MCP server source directory (parent of pyproject.toml)",
     )
 
     anthropic_api_key: SecretStr = Field(
         default=SecretStr(""),
         description="Anthropic API key",
     )
-    anthropic_model: str = Field(
-        default="claude-sonnet-4-5",
-        description="Anthropic model to use for the agent",
+    anthropic_api_url: str = Field(
+        default="https://api.anthropic.com",
+        description="Anthropic API base URL",
+    )
+    managed_agent_id: str = Field(
+        default="",
+        description="Claude Managed Agent ID",
+    )
+    managed_environment_id: str = Field(
+        default="",
+        description="Claude Managed Agents environment ID",
+    )
+    managed_vault_ids: str = Field(
+        default="",
+        description="Comma-separated vault IDs made available to each managed session",
+    )
+    managed_memory_store_id: str = Field(
+        default="",
+        description="Native Anthropic memory store containing the athlete profile",
+    )
+    managed_agent_timeout_seconds: float = Field(
+        default=300,
+        gt=0,
+        description="Maximum time to wait for one managed-agent turn",
     )
 
     telegram_bot_token: SecretStr = Field(
@@ -103,15 +112,25 @@ class Settings(BaseSettings):
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.briefing_timezone)
 
+    @property
+    def vault_ids(self) -> list[str]:
+        return [vault_id.strip() for vault_id in self.managed_vault_ids.split(",") if vault_id.strip()]
+
     def required_missing(self) -> list[str]:
         """Return the names of required settings that are not configured."""
         missing: list[str] = []
-        if not self.open_wearables_api_key.get_secret_value():
-            missing.append("OPEN_WEARABLES_API_KEY")
         if not self.ow_user_id:
             missing.append("OW_USER_ID")
         if not self.anthropic_api_key.get_secret_value():
             missing.append("ANTHROPIC_API_KEY")
+        if not self.managed_agent_id:
+            missing.append("MANAGED_AGENT_ID")
+        if not self.managed_environment_id:
+            missing.append("MANAGED_ENVIRONMENT_ID")
+        if not self.vault_ids:
+            missing.append("MANAGED_VAULT_IDS")
+        if not self.managed_memory_store_id:
+            missing.append("MANAGED_MEMORY_STORE_ID")
         if not self.telegram_bot_token.get_secret_value():
             missing.append("TELEGRAM_BOT_TOKEN")
         if not self.telegram_chat_id:

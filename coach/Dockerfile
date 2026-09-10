@@ -15,18 +15,11 @@ FROM python:3.13-slim AS builder
     COPY coach/config /opt/coach/config
     RUN uv sync --no-dev
 
-    WORKDIR /opt/mcp
-    COPY mcp/pyproject.toml mcp/uv.lock mcp/README.md /opt/mcp/
-    COPY mcp/app /opt/mcp/app
-    COPY mcp/config /opt/mcp/config
-    RUN uv sync --no-dev --frozen
-
 FROM python:3.13-slim
 
     COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
     COPY --from=builder /opt/coach /opt/coach
-    COPY --from=builder /opt/mcp /opt/mcp
 
     RUN mkdir -p /data
 

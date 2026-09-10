@@ -181,13 +181,9 @@ services:
     env_file:
       - ./coach/config/.env
     environment:
-      - OPEN_WEARABLES_API_URL=http://app:8000
-      - OW_MCP_DIR=/opt/mcp
       - COACH_DB_PATH=/data/coach.db
     volumes:
       - coach_data:/data
-    depends_on:
-      - app
     develop:
       watch:
         - action: sync+restart
