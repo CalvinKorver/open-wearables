@@ -142,8 +142,31 @@ agent_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/agents \
       {"type": "url", "name": "open_wearables", "url": $url}
     ],
     "tools": [
-      {"type": "agent_toolset_20260401"},
-      {"type": "mcp_toolset", "mcp_server_name": "open_wearables"}
+      {
+        "type": "agent_toolset_20260401",
+        "default_config": {"enabled": false},
+        "configs": [
+          {"name": "read", "enabled": true, "permission_policy": {"type": "always_allow"}},
+          {"name": "write", "enabled": true, "permission_policy": {"type": "always_allow"}},
+          {"name": "edit", "enabled": true, "permission_policy": {"type": "always_allow"}},
+          {"name": "glob", "enabled": true, "permission_policy": {"type": "always_allow"}}
+        ]
+      },
+      {
+        "type": "mcp_toolset",
+        "mcp_server_name": "open_wearables",
+        "default_config": {
+          "enabled": false,
+          "permission_policy": {"type": "always_allow"}
+        },
+        "configs": [
+          {"name": "get_users", "enabled": true},
+          {"name": "get_sleep_summary", "enabled": true},
+          {"name": "get_activity_summary", "enabled": true},
+          {"name": "get_workout_events", "enabled": true},
+          {"name": "get_timeseries", "enabled": true}
+        ]
+      }
     ]
   }')" | jq -r '.id')
 ```

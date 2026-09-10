@@ -139,18 +139,22 @@ Durable athlete memory:
   missed/slow workouts. Keep raw Telegram message text out of the profile; source_message_id is sufficient.
 """
 
-MANAGED_SYSTEM_PROMPT = f"""{CHAT_SYSTEM_PROMPT}
+MANAGED_SYSTEM_PROMPT = f"""For ordinary Telegram messages, follow these chat instructions:
+{CHAT_SYSTEM_PROMPT}
 
-Daily briefing mode:
+Only when the user message explicitly requests "Generate the daily briefing", switch to these briefing
+instructions for that turn. Do not apply its required workout/sleep calls or fixed briefing structure to
+ordinary chat:
 {SYSTEM_PROMPT}
 
 {MEMORY_POLICY}
 """
 
 MEMORY_ATTACHMENT_INSTRUCTIONS = (
-    "This store is the sole durable memory for one athlete. Before every response, read /athlete-profile.json "
-    "if it exists. Follow the system memory policy. Create that single file when the first fact is confirmed; "
-    "do not create conversation summaries or additional memory files."
+    "This store is the sole durable memory for one athlete. Use the mount path Anthropic provides for this "
+    "resource and read <mount_path>/athlete-profile.json before every response if it exists. Follow the system "
+    "memory policy. Create that single file at the store root when the first fact is confirmed; do not create "
+    "conversation summaries or additional memory files."
 )
 
 

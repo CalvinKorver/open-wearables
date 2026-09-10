@@ -2,7 +2,7 @@
 
 import json
 from logging import getLogger
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Protocol
 
 import httpx
 
@@ -21,12 +21,16 @@ class ManagedAgentError(RuntimeError):
     """Base error for Managed Agents relay failures."""
 
 
-class ManagedAgentPermissionRequired(ManagedAgentError):
+class ManagedAgentPermissionRequiredError(ManagedAgentError):
     """Raised instead of silently approving a tool permission request."""
 
 
-class _SessionUnavailable(ManagedAgentError):
+class _SessionUnavailableError(ManagedAgentError):
     """The saved session cannot accept another turn."""
+
+
+class _LineStream(Protocol):
+    def aiter_lines(self) -> AsyncIterator[str]: ...
 
 
 def _headers() -> dict[str, str]:
@@ -64,7 +68,7 @@ def _raise_for_status(response: httpx.Response, action: str) -> None:
         return
     detail = _error_detail(response)
     if response.status_code in {404, 409, 410}:
-        raise _SessionUnavailable(f"{action} failed ({response.status_code}): {detail}")
+        raise _SessionUnavailableError(f"{action} failed ({response.status_code}): {detail}")
     raise ManagedAgentError(f"{action} failed ({response.status_code}): {detail}")
 
 
@@ -150,7 +154,7 @@ async def _send_turn(
     _raise_for_status(response, "Send managed session event")
 
 
-async def _sse_events(response: httpx.Response) -> AsyncIterator[dict[str, Any]]:
+async def _sse_events(response: _LineStream) -> AsyncIterator[dict[str, Any]]:
     """Yield JSON objects from SSE ``data:`` records."""
     data_lines: list[str] = []
     async for line in response.aiter_lines():
@@ -233,18 +237,20 @@ async def _stream_turn(
             elif event_type == "session.error":
                 raise ManagedAgentError(_stream_error(event))
             elif event_type == "session.status_terminated":
-                raise _SessionUnavailable("Managed session terminated while processing the turn")
+                raise _SessionUnavailableError("Managed session terminated while processing the turn")
             elif event_type == "session.status_idle":
                 reason = event.get("stop_reason")
                 reason_type = reason.get("type") if isinstance(reason, dict) else None
                 if reason_type == "requires_action":
                     event_ids = reason.get("event_ids", []) if isinstance(reason, dict) else []
-                    raise ManagedAgentPermissionRequired(
+                    raise ManagedAgentPermissionRequiredError(
                         "Managed Agent requested tool approval. Configure only the coach's read-only MCP tools "
                         f"with always_allow; pending event IDs: {event_ids}"
                     )
                 if reason_type != "end_turn":
-                    raise ManagedAgentError(f"Managed Agent stopped before completing the turn: {reason_type or 'unknown'}")
+                    raise ManagedAgentError(
+                        f"Managed Agent stopped before completing the turn: {reason_type or 'unknown'}"
+                    )
                 break
 
     reply = "\n".join(messages).strip()
@@ -272,7 +278,7 @@ async def run_turn(
                     update_id=update_id,
                     message_id=message_id,
                 )
-            except _SessionUnavailable:
+            except _SessionUnavailableError:
                 db.clear_managed_session()
                 if attempt:
                     raise

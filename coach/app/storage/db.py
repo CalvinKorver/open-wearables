@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 
 from app.config import settings
 
+
 class BriefingStatus(StrEnum):
     PENDING = "pending"
     SENT = "sent"
