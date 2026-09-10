@@ -1,6 +1,6 @@
 """Prompts for the daily briefing agent."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from app.config import settings
 
@@ -115,6 +115,60 @@ CHAT_SYSTEM_PROMPT = (
     "If a tool returns an error, say that source was unavailable. If the user asks for a "
     "date with no data, say so instead of guessing.\n"
 )
+
+MEMORY_POLICY = """
+Durable athlete memory:
+- An Anthropic memory store is attached read/write. Keep exactly one canonical JSON document named
+  athlete-profile.json at the root of that store. Read it before every coaching response and briefing.
+- The document has schema_version, goals (array), injuries (array), and preferences (object). Each goal or
+  injury has an id, status, asserted_at, confirmed_at, source_message_id, and optional review_after. Preserve
+  the user's wording for medical restrictions. Preferences use stable descriptive keys.
+- Save an explicit, non-sensitive request such as "remember that I prefer kilometres" immediately. Reply with
+  exactly what changed and say the user can undo it.
+- Before writing any injury, symptom, medical restriction, inferred fact, or value that conflicts with an
+  existing memory, ask a concise confirmation question and wait for the next user turn. A casual statement is
+  not consent to store it. Never infer a diagnosis, treatment, or recovery.
+- Race goals and preferences mentioned without an explicit request to remember them also require confirmation.
+- Replace conflicting values deliberately and retain superseded goals/injuries with status "superseded"; do not
+  silently overwrite them. Temporary restrictions remain active until the user confirms otherwise.
+- /memory means read and present the active profile, grouped as goals, injuries/constraints, and preferences.
+- /forget <description> means identify the matching memory, ask for confirmation if ambiguous or health-related,
+  then remove it and confirm the deletion. /forget all always requires explicit confirmation before clearing the
+  profile document.
+- Do not save general conversation summaries, personality guesses, wearable measurements, or facts inferred from
+  missed/slow workouts. Keep raw Telegram message text out of the profile; source_message_id is sufficient.
+"""
+
+MANAGED_SYSTEM_PROMPT = f"""For ordinary Telegram messages, follow these chat instructions:
+{CHAT_SYSTEM_PROMPT}
+
+Only when the user message explicitly requests "Generate the daily briefing", switch to these briefing
+instructions for that turn. Do not apply its required workout/sleep calls or fixed briefing structure to
+ordinary chat:
+{SYSTEM_PROMPT}
+
+{MEMORY_POLICY}
+"""
+
+MEMORY_ATTACHMENT_INSTRUCTIONS = (
+    "This store is the sole durable memory for one athlete. Use the mount path Anthropic provides for this "
+    "resource and read <mount_path>/athlete-profile.json before every response if it exists. Follow the system "
+    "memory policy. Create that single file at the store root when the first fact is confirmed; do not create "
+    "conversation summaries or additional memory files."
+)
+
+
+def turn_context(*, update_id: int | None = None, message_id: int | None = None) -> str:
+    """Return trusted per-turn context passed alongside a Telegram user message."""
+    now = datetime.now(settings.tz)
+    source = f"telegram:{update_id}:{message_id}" if update_id is not None and message_id is not None else "scheduler"
+    return (
+        f"user_id: {settings.ow_user_id}\n"
+        f"User local timezone (IANA): {settings.briefing_timezone}\n"
+        f"Today's local date: {now.date().isoformat()}\n"
+        f"Current local time: {now.strftime('%H:%M')}\n"
+        f"source_message_id: {source}"
+    )
 
 
 def user_prompt(local_date: date, user_id: str) -> str:

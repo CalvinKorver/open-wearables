@@ -11,7 +11,7 @@ def _fresh_db():
     db.init_db()
     with db.session() as s:
         s.query(db.BriefingRun).delete()
-        s.query(db.ConversationTurn).delete()
+        s.query(db.ManagedSessionState).delete()
         s.query(db.TelegramState).delete()
         s.commit()
     return
@@ -86,18 +86,25 @@ def test_telegram_offset_round_trip():
     assert db.get_telegram_offset() == 43
 
 
-def test_conversation_turns_are_chronological_and_pruned():
-    for i in range(db.MAX_CONVERSATION_TURNS + 3):
-        db.append_conversation_turn("user" if i % 2 == 0 else "assistant", f"turn-{i}")
+def test_managed_session_round_trip_and_clear():
+    assert db.get_managed_session_id() is None
+    db.set_managed_session_id("session-1")
+    assert db.get_managed_session_id() == "session-1"
+    db.set_managed_session_id("session-2")
+    assert db.get_managed_session_id() == "session-2"
+    db.clear_managed_session()
+    assert db.get_managed_session_id() is None
 
-    turns = db.get_conversation_turns()
-    assert len(turns) == db.MAX_CONVERSATION_TURNS
-    assert turns[0][1] == "turn-3"
-    assert turns[-1][1] == f"turn-{db.MAX_CONVERSATION_TURNS + 2}"
 
-
-def test_clear_conversation_deletes_all_turns():
-    db.append_conversation_turn("user", "hi")
-    db.append_conversation_turn("assistant", "hello")
-    db.clear_conversation()
-    assert db.get_conversation_turns() == []
+def test_init_db_removes_legacy_local_conversation_table():
+    with db._engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS conversation_turn "
+            "(id INTEGER PRIMARY KEY, role VARCHAR(16), content TEXT, created_at DATETIME)"
+        )
+    db.init_db()
+    with db._engine.connect() as connection:
+        names = connection.exec_driver_sql(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_turn'"
+        ).all()
+    assert names == []

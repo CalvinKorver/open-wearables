@@ -1,4 +1,3 @@
-from contextlib import asynccontextmanager
 from datetime import date
 from typing import Any
 from unittest.mock import AsyncMock
@@ -14,7 +13,7 @@ from app.storage import db
 def _fresh_conversation():
     db.init_db()
     with db.session() as s:
-        s.query(db.ConversationTurn).delete()
+        s.query(db.ManagedSessionState).delete()
         s.commit()
     return
 
@@ -53,17 +52,22 @@ async def test_handle_incoming_non_text_hint(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.asyncio
 async def test_handle_incoming_clear(monkeypatch: pytest.MonkeyPatch) -> None:
-    db.append_conversation_turn("user", "hi")
     sent: list[str] = []
+    cleared = False
 
     async def fake_reply(text: str, *, reply_to_message_id: int | None = None) -> str:
         sent.append(text)
         return "1"
 
+    async def fake_clear() -> None:
+        nonlocal cleared
+        cleared = True
+
     monkeypatch.setattr("app.chat.send_reply", fake_reply)
+    monkeypatch.setattr("app.chat.clear_session", fake_clear)
     await handle_incoming(IncomingMessage(1, 9, "1234567", "/clear"))
-    assert db.get_conversation_turns() == []
-    assert sent and "Cleared" in sent[0]
+    assert cleared
+    assert sent and "fresh chat" in sent[0]
 
 
 @pytest.mark.asyncio
@@ -88,49 +92,60 @@ async def test_handle_incoming_question_saves_turns_and_replies(monkeypatch: pyt
         sent.append((text, reply_to_message_id))
         return "1"
 
-    @asynccontextmanager
-    async def fake_mcp():
-        yield object()
-
-    async def fake_generate(session: object, user_text: str, history: list[tuple[str, str]]) -> str:
+    async def fake_run_turn(user_text: str, *, update_id: int | None, message_id: int | None) -> str:
         assert user_text == "How did I sleep?"
-        assert history == []
+        assert update_id == 1
+        assert message_id == 9
         return "<b>7h 12m</b> last night."
 
     monkeypatch.setattr("app.chat.send_reply", fake_reply)
     monkeypatch.setattr("app.chat.send_chat_action", AsyncMock())
-    monkeypatch.setattr("app.chat.open_mcp_client", fake_mcp)
-    monkeypatch.setattr("app.chat.generate_reply", fake_generate)
+    monkeypatch.setattr("app.chat.run_turn", fake_run_turn)
 
     await handle_incoming(IncomingMessage(1, 9, "1234567", "How did I sleep?"))
 
     assert sent == [("<b>7h 12m</b> last night.", 9)]
-    assert db.get_conversation_turns() == [
-        ("user", "How did I sleep?"),
-        ("assistant", "<b>7h 12m</b> last night."),
-    ]
 
 
 @pytest.mark.asyncio
 async def test_handle_incoming_question_alerts_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     alerts: list[str] = []
 
-    @asynccontextmanager
-    async def fake_mcp():
-        yield object()
-
     async def boom(*args: object, **kwargs: object) -> str:
-        raise RuntimeError("mcp down")
+        raise RuntimeError("managed agent down")
 
     async def fake_alert(text: str) -> str:
         alerts.append(text)
         return "1"
 
     monkeypatch.setattr("app.chat.send_chat_action", AsyncMock())
-    monkeypatch.setattr("app.chat.open_mcp_client", fake_mcp)
-    monkeypatch.setattr("app.chat.generate_reply", boom)
+    monkeypatch.setattr("app.chat.run_turn", boom)
     monkeypatch.setattr("app.chat.send_alert", fake_alert)
 
     await handle_incoming(IncomingMessage(1, 9, "1234567", "sleep?"))
-    assert alerts and "mcp down" in alerts[0]
-    assert db.get_conversation_turns() == []
+    assert alerts and "managed agent down" in alerts[0]
+
+
+@pytest.mark.asyncio
+async def test_forget_all_requires_exact_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent: list[str] = []
+    forgotten = False
+
+    async def fake_reply(text: str, *, reply_to_message_id: int | None = None) -> str:
+        sent.append(text)
+        return "1"
+
+    async def fake_forget() -> None:
+        nonlocal forgotten
+        forgotten = True
+
+    monkeypatch.setattr("app.chat.send_reply", fake_reply)
+    monkeypatch.setattr("app.chat.forget_all_data", fake_forget)
+
+    await handle_incoming(IncomingMessage(1, 9, "1234567", "/forget all"))
+    assert not forgotten
+    assert "/forget all confirm" in sent[-1]
+
+    await handle_incoming(IncomingMessage(2, 10, "1234567", "/forget all confirm"))
+    assert forgotten
+    assert "Deleted all live durable memories" in sent[-1]

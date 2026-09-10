@@ -142,21 +142,47 @@ agent_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/agents \
       {"type": "url", "name": "open_wearables", "url": $url}
     ],
     "tools": [
-      {"type": "agent_toolset_20260401"},
-      {"type": "mcp_toolset", "mcp_server_name": "open_wearables"}
+      {
+        "type": "agent_toolset_20260401",
+        "default_config": {"enabled": false},
+        "configs": [
+          {"name": "read", "enabled": true, "permission_policy": {"type": "always_allow"}},
+          {"name": "write", "enabled": true, "permission_policy": {"type": "always_allow"}},
+          {"name": "edit", "enabled": true, "permission_policy": {"type": "always_allow"}},
+          {"name": "glob", "enabled": true, "permission_policy": {"type": "always_allow"}}
+        ]
+      },
+      {
+        "type": "mcp_toolset",
+        "mcp_server_name": "open_wearables",
+        "default_config": {
+          "enabled": false,
+          "permission_policy": {"type": "always_allow"}
+        },
+        "configs": [
+          {"name": "get_users", "enabled": true},
+          {"name": "get_sleep_summary", "enabled": true},
+          {"name": "get_activity_summary", "enabled": true},
+          {"name": "get_workout_events", "enabled": true},
+          {"name": "get_timeseries", "enabled": true}
+        ]
+      }
     ]
   }')" | jq -r '.id')
 ```
 
-### Optional: limit which MCP tools are enabled
+### Limit which MCP tools are enabled
 
-By default all tools from the server are enabled. To allow only specific tools:
+The Telegram relay cannot present Anthropic tool-confirmation prompts. Disable tools by default, enable only these read-only Open Wearables tools, and allow them to run unattended:
 
 ```json
 {
   "type": "mcp_toolset",
   "mcp_server_name": "open_wearables",
-  "default_config": { "enabled": false },
+  "default_config": {
+    "enabled": false,
+    "permission_policy": { "type": "always_allow" }
+  },
   "configs": [
     { "name": "get_users", "enabled": true },
     { "name": "get_sleep_summary", "enabled": true },
@@ -169,9 +195,24 @@ By default all tools from the server are enabled. To allow only specific tools:
 
 Available tool names: `get_users`, `get_activity_summary`, `get_sleep_summary`, `get_workout_events`, `get_timeseries`.
 
+### Create a dedicated athlete memory store
+
+Use one native store per Telegram user. Memory-store API calls require the memory beta header by itself:
+
+```bash
+memory_store_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/memory_stores \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "anthropic-beta: agent-memory-2026-07-22" \
+  -H "content-type: application/json" \
+  -d '{"name":"Open Wearables athlete memory"}' | jq -r '.id')
+```
+
+The Telegram coach attaches this store with read/write access and maintains one structured `athlete-profile.json`. It stores only confirmed race goals, injuries/constraints, and preferences—not conversation summaries or wearable measurements.
+
 ### Create a session
 
-You need an **`environment_id`** from the Managed Agents environments API. Pass **`vault_ids`** so the runtime can authenticate to your MCP.
+You need an **`environment_id`** from the Managed Agents environments API. Pass **`vault_ids`** for MCP authentication and attach the athlete's memory store. The Telegram coach performs this automatically; this request is useful as a direct smoke test.
 
 ```bash
 session_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/sessions \
@@ -179,10 +220,16 @@ session_id=$(curl --fail-with-body -sS https://api.anthropic.com/v1/sessions \
   -H "anthropic-version: 2023-06-01" \
   -H "anthropic-beta: managed-agents-2026-04-01" \
   -H "content-type: application/json" \
-  -d "$(jq -n --arg agent "$agent_id" --arg env "$ENVIRONMENT_ID" --arg vault "$vault_id" '{
+  -d "$(jq -n --arg agent "$agent_id" --arg env "$ENVIRONMENT_ID" --arg vault "$vault_id" --arg memory "$memory_store_id" '{
     "agent": $agent,
     "environment_id": $env,
-    "vault_ids": [$vault]
+    "vault_ids": [$vault],
+    "resources": [{
+      "type": "memory_store",
+      "memory_store_id": $memory,
+      "access": "read_write",
+      "instructions": "Read athlete-profile.json before coaching and write only confirmed athlete facts."
+    }]
   }')" | jq -r '.id')
 ```
 
@@ -194,7 +241,7 @@ Use this checklist after deploy and API setup:
 
 1. **Deploy** MCP with `MCP_AUTH_MODE=bearer`, public `OPEN_WEARABLES_API_URL`, and valid `OPEN_WEARABLES_API_KEY`.
 2. **Verify curl** — health OK; `/mcp` 401 without Bearer; non-401 with Bearer (section 2).
-3. **Create** vault, `static_bearer` credential (`mcp_server_url` = agent URL), agent, and session with `vault_ids` and `environment_id`.
+3. **Create** the vault, memory store, agent, and a session with `vault_ids`, `environment_id`, and the memory resource.
 4. **Run a prompt** in the session, e.g. *"Who can I query health data for?"*
 5. **Expect** `get_users` (or equivalent) with no `mcp_authentication_failed_error` in session events.
 6. **Confirm** API key scope — users returned match what your `OPEN_WEARABLES_API_KEY` can access.

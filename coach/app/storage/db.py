@@ -4,20 +4,19 @@ Persisted state:
 - ``briefing_run`` — one row per local date, an idempotency guard so a date is
   never briefed twice unless ``--force``.
 - ``telegram_state`` — getUpdates offset so restarts do not re-handle old DMs.
-- ``conversation_turn`` — recent Telegram chat history for multi-turn replies.
+- ``managed_session_state`` — the active Anthropic Managed Agents session ID.
+
+Conversation and semantic memory live only in Anthropic Managed Agents.
 """
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from sqlalchemy import Date, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import Date, DateTime, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
-
-MAX_CONVERSATION_TURNS = 20
-MAX_TURN_CHARS = 8000
 
 
 class BriefingStatus(StrEnum):
@@ -50,12 +49,13 @@ class TelegramState(Base):
     next_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
-class ConversationTurn(Base):
-    __tablename__ = "conversation_turn"
+class ManagedSessionState(Base):
+    """Singleton row (id=1) for the active Anthropic session."""
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    role: Mapped[str] = mapped_column(String(16), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    __tablename__ = "managed_session_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
@@ -74,6 +74,9 @@ _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 def init_db() -> None:
     """Create tables if they don't yet exist. Safe to call repeatedly."""
     Base.metadata.create_all(_engine)
+    # Conversation history moved to Anthropic sessions. Remove legacy local copies.
+    with _engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS conversation_turn"))
 
 
 def session() -> Session:
@@ -163,32 +166,26 @@ def set_telegram_offset(offset: int) -> None:
         s.commit()
 
 
-def get_conversation_turns(limit: int = MAX_CONVERSATION_TURNS) -> list[tuple[str, str]]:
-    """Return recent (role, content) turns in chronological order."""
+def get_managed_session_id() -> str | None:
     with session() as s:
-        rows = s.query(ConversationTurn).order_by(ConversationTurn.id.desc()).limit(limit).all()
-        rows.reverse()
-        return [(row.role, row.content) for row in rows]
+        row = s.get(ManagedSessionState, 1)
+        return row.session_id if row is not None else None
 
 
-def append_conversation_turn(role: str, content: str) -> None:
+def set_managed_session_id(session_id: str) -> None:
     with session() as s:
-        s.add(
-            ConversationTurn(
-                role=role,
-                content=content[:MAX_TURN_CHARS],
-                created_at=utcnow(),
-            )
-        )
+        row = s.get(ManagedSessionState, 1)
+        if row is None:
+            s.add(ManagedSessionState(id=1, session_id=session_id, created_at=utcnow()))
+        else:
+            row.session_id = session_id
+            row.created_at = utcnow()
         s.commit()
-        ids = [row.id for row in s.query(ConversationTurn.id).order_by(ConversationTurn.id.desc()).all()]
-        extra = ids[MAX_CONVERSATION_TURNS:]
-        if extra:
-            s.query(ConversationTurn).filter(ConversationTurn.id.in_(extra)).delete(synchronize_session=False)
-            s.commit()
 
 
-def clear_conversation() -> None:
+def clear_managed_session() -> None:
     with session() as s:
-        s.query(ConversationTurn).delete()
+        row = s.get(ManagedSessionState, 1)
+        if row is not None:
+            s.delete(row)
         s.commit()
