@@ -9,6 +9,7 @@ from contextlib import suppress
 from app.channels import telegram
 from app.channels.poller import run_poller_forever
 from app.config import settings
+from app.logging_utils import install_secret_redaction
 from app.scheduler import build_scheduler
 from app.storage import db
 
@@ -21,6 +22,7 @@ def _configure_logging() -> None:
         format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
         stream=sys.stdout,
     )
+    install_secret_redaction()
 
 
 def _validate_required() -> None:
