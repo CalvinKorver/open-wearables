@@ -14,6 +14,7 @@ from datetime import date
 
 from app.briefing import run_for_date, yesterday_local
 from app.config import settings
+from app.logging_utils import install_secret_redaction
 
 
 def _parse_date(value: str) -> date:
@@ -47,6 +48,7 @@ def main() -> None:
         format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
         stream=sys.stdout,
     )
+    install_secret_redaction()
     args = _build_parser().parse_args()
 
     missing = settings.required_missing()
