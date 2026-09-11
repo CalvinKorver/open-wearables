@@ -73,6 +73,51 @@ class TestSDKLogsHappyPath:
         assert response.json()["user_id"] == USER_ID
         mock_store.assert_called_once()
 
+    @patch("app.api.routes.v1.sdk_logs.log_structured")
+    @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
+    def test_zero_sample_sync_emits_sleep_empty_warning(
+        self, mock_store: MagicMock, mock_log: MagicMock, client: TestClient, db: Session
+    ) -> None:
+        api_key = ApiKeyFactory()
+        empty_sync_start = {
+            "eventType": "historical_data_sync_start",
+            "timestamp": "2026-07-19T15:04:14Z",
+            "dataTypeCounts": [
+                {"type": "HKCategoryTypeIdentifierSleepAnalysis", "count": 0},
+                {"type": "HKQuantityTypeIdentifierHeartRate", "count": 0},
+            ],
+            "timeRange": {
+                "startDate": "2026-07-14T00:00:00Z",
+                "endDate": "2026-07-19T15:04:14Z",
+            },
+        }
+        sleep_end = {
+            "eventType": "historical_data_type_sync_end",
+            "timestamp": "2026-07-19T15:04:14Z",
+            "dataType": "SleepAnalysis",
+            "success": True,
+            "recordCount": 0,
+            "durationMs": 10,
+        }
+        response = client.post(
+            _url(),
+            headers={"X-Open-Wearables-API-Key": api_key.id},
+            json=_payload(empty_sync_start, sleep_end),
+        )
+        assert response.status_code == 202
+        mock_store.assert_called_once()
+
+        actions = [call.kwargs.get("action") for call in mock_log.call_args_list]
+        assert "sdk_logs_received" in actions
+        assert "sdk_sleep_sync_empty" in actions
+
+        empty_warning = next(
+            call for call in mock_log.call_args_list if call.kwargs.get("action") == "sdk_sleep_sync_empty"
+        )
+        assert empty_warning.args[1] == "warning"
+        assert empty_warning.kwargs["zero_sample_sync"] is True
+        assert empty_warning.kwargs["sleep_sample_count"] == 0
+
     @patch("app.api.routes.v1.sdk_logs.store_raw_payload")
     def test_sync_start_only(self, mock_store: MagicMock, client: TestClient, db: Session) -> None:
         api_key = ApiKeyFactory()

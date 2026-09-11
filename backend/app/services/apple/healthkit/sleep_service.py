@@ -202,7 +202,8 @@ def handle_sleep_data(
     Process SDK sleep data and track sleep sessions using Redis state.
 
     Sleep sessions are tracked in Redis and automatically finalized to the database when
-    a gap of more than 2 hours (configurable) is detected between consecutive sleep records.
+    a gap of more than ``sleep_end_gap_minutes`` (default 30) is detected between consecutive
+    sleep records.
 
     A per-user Redis lock serializes concurrent calls so that parallel Celery tasks
     (e.g. from a bulk historical upload) accumulate stages into the same session instead
@@ -224,20 +225,37 @@ def handle_sleep_data(
         - Deduplicate incoming data based on start/end/stage/source
         - If no active session exists: Create new session in Redis (only for valid start states)
         - If active session exists: Check gap between new sample and the session window
-          * Gap > 2 hours: Finalize existing session, start new one
+          * Gap > sleep_end_gap_minutes: Finalize existing session, start new one
           * Otherwise: Accumulate sleep stage durations in existing session
         - Persist state once after the whole batch; dispatch the stale-sleep task
     """
     redis_client = get_redis_client()
     lock = redis_client.lock(f"sleep:lock:{user_id}", timeout=30, blocking_timeout=15)
+    incoming_count = len(request.data.sleep)
+    skipped_unknown_stage = 0
+    skipped_non_start = 0
+    finalized = False
+    had_active_state = False
+    source_names: set[str] = set()
+    batch_start: datetime | None = None
+    batch_end: datetime | None = None
 
     try:
         acquired = lock.acquire()
         if not acquired:
-            logger.warning("Could not acquire sleep processing lock for user %s; skipping batch", user_id)
+            log_structured(
+                logger,
+                "warning",
+                f"Could not acquire sleep processing lock for user {user_id}; skipping batch",
+                action="sleep_lock_skipped",
+                user_id=user_id,
+                provider=request.provider,
+                incoming_sleep=incoming_count,
+            )
             return
 
         current_state = load_sleep_state(user_id)
+        had_active_state = current_state is not None
         provider = request.provider
 
         # Deduplicate and sort
@@ -260,14 +278,21 @@ def handle_sleep_data(
         for sjson in unique_data:
             # Extract device info
             device_model, software_version, original_source_name = extract_device_info(sjson.source)
+            if original_source_name:
+                source_names.add(original_source_name)
+
+            batch_start = sjson.startDate if batch_start is None else min(batch_start, sjson.startDate)
+            batch_end = sjson.endDate if batch_end is None else max(batch_end, sjson.endDate)
 
             sleep_phase = get_apple_sleep_phase(sjson.stage)
 
             if sleep_phase is None:
+                skipped_unknown_stage += 1
                 continue
 
             if not current_state:
                 if sleep_phase not in SLEEP_START_STATES:
+                    skipped_non_start += 1
                     continue
 
                 current_state = _create_new_sleep_state(
@@ -309,6 +334,28 @@ def handle_sleep_data(
                 session_end = session_end.replace(tzinfo=timezone.utc)
             if datetime.now(timezone.utc) - session_end >= timedelta(minutes=settings.sleep_end_gap_minutes):
                 finish_sleep(db_session, user_id, current_state)
+                finalized = True
+
+        log_structured(
+            logger,
+            "info",
+            "Sleep batch processed",
+            action="sleep_batch_processed",
+            user_id=user_id,
+            provider=provider,
+            incoming_sleep=incoming_count,
+            unique_sleep=len(unique_data),
+            duplicates_dropped=incoming_count - len(unique_data),
+            skipped_unknown_stage=skipped_unknown_stage,
+            skipped_non_start=skipped_non_start,
+            had_active_state=had_active_state,
+            session_persisted=current_state is not None and not finalized,
+            session_finalized=finalized,
+            source_names=sorted(source_names),
+            batch_start=batch_start.isoformat() if batch_start else None,
+            batch_end=batch_end.isoformat() if batch_end else None,
+            active_source_name=current_state.source_name if current_state and not finalized else None,
+        )
 
     finally:
         with contextlib.suppress(Exception):

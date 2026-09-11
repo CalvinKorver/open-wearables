@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.schemas.providers.mobile_sdk import SDKLogRequest
 from app.schemas.responses.upload import UploadDataResponse
+from app.services.apple.healthkit.sdk_log_diagnostics import summarize_sdk_log_events
 from app.services.raw_payload_storage import store_raw_payload
 from app.utils.auth import SDKAuthDep
 from app.utils.structured_logging import log_structured
@@ -33,6 +34,7 @@ def submit_sdk_logs(
     batch_id = str(uuid.uuid4())
     provider = (body.provider or "unknown").lower()
     event_types = [e.eventType for e in body.events]
+    diagnostics = summarize_sdk_log_events(body.events)
 
     log_structured(
         logger,
@@ -45,7 +47,34 @@ def submit_sdk_logs(
         event_count=len(body.events),
         event_types=event_types,
         sdk_version=body.sdkVersion,
+        total_samples=diagnostics["total_samples"],
+        sleep_sample_count=diagnostics["sleep_sample_count"],
+        zero_sample_sync=diagnostics["zero_sample_sync"],
+        sleep_sync_empty=diagnostics["sleep_sync_empty"],
+        sync_time_range_start=diagnostics["sync_time_range_start"],
+        sync_time_range_end=diagnostics["sync_time_range_end"],
+        sleep_type_ends=diagnostics["sleep_type_ends"],
     )
+
+    # High-signal warning for the common "Sync complete: 0 samples" case where
+    # SleepAnalysis is marked complete but nothing was uploaded to the API.
+    if diagnostics["zero_sample_sync"] or diagnostics["sleep_sync_empty"]:
+        log_structured(
+            logger,
+            "warning",
+            "SDK sync reported no new sleep samples (client-side empty query)",
+            action="sdk_sleep_sync_empty",
+            batch_id=batch_id,
+            user_id=user_id,
+            provider=provider,
+            sdk_version=body.sdkVersion,
+            total_samples=diagnostics["total_samples"],
+            sleep_sample_count=diagnostics["sleep_sample_count"],
+            zero_sample_sync=diagnostics["zero_sample_sync"],
+            sync_time_range_start=diagnostics["sync_time_range_start"],
+            sync_time_range_end=diagnostics["sync_time_range_end"],
+            sleep_type_ends=diagnostics["sleep_type_ends"],
+        )
 
     store_raw_payload(
         source="sdk_logs",

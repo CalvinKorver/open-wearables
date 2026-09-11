@@ -154,6 +154,12 @@ keywords: ["android health connect troubleshooting", "health connect permissions
        ```
   </Accordion>
 
+  <Accordion title="Sync complete with 0 samples / sleep stuck on an old night">
+    **Symptoms:** Sync finishes successfully, every type is marked complete, but the summary shows **0 samples** and newer sleep nights never appear.
+
+    **Cause:** The Health Connect / SDK anchored query returned no new samples, so nothing was uploaded. Check backend logs for `sdk_sleep_sync_empty` or `*_sdk_batch_no_sleep`, confirm sleep exists in Health Connect for the missing nights, then call `resetAnchors()` + `syncNow()`.
+  </Accordion>
+
   <Accordion title="Data not appearing in Open Wearables">
     **Symptoms:** Sync seems to complete but data doesn't show up in the API.
 

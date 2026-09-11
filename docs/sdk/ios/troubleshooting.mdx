@@ -146,6 +146,37 @@ keywords: ["ios healthkit troubleshooting", "healthkit permissions fix", "ios he
        Failed uploads are queued in the persistent outbox. Enable logging to see retry attempts.
   </Accordion>
 
+  <Accordion title="Sync complete with 0 samples / sleep stuck on an old night">
+    **Symptoms:** Sync Logs show `Sync complete: 0 samples across 40 types`, `SleepAnalysis` is marked complete with no error, and the dashboard still only shows sleep through an older date (for example AutoSleep through July 14).
+
+    **What this means:** The SDK's HealthKit anchored query found **no new samples**. Nothing was uploaded, so the backend cannot create newer sleep sessions. This is usually a client / HealthKit gap, not a silent API failure.
+
+    **Debug checklist (in order):**
+
+    1. **Confirm AutoSleep wrote nights after the last dashboard session**
+       Open Apple Health → Browse → Sleep and check whether AutoSleep (or Apple Watch) has samples after that date. If HealthKit also stops there, fix AutoSleep / watch sync first.
+
+    2. **Inspect backend structured logs** (Railway / CloudWatch):
+       | Action | Signal |
+       |--------|--------|
+       | `sdk_sleep_sync_empty` / `sdk_logs_received` with `zero_sample_sync=true` | Client reported an empty sync |
+       | `*_sdk_batch_received` with `sleep_count=0` | No sleep segments reached the API |
+       | `sleep_batch_processed` | Sleep was uploaded; check `skipped_*`, `batch_start` / `batch_end`, `session_finalized` |
+       | `sleep_lock_skipped` / `sleep_record_save_error` | Backend dropped or failed a batch |
+
+       Example Railway filters: `@action:sdk_sleep_sync_empty`, `@action:apple_sdk_batch_received`, `@user_id:<id>`.
+
+    3. **Reset anchors and sync again**
+       ```swift
+       sdk.resetAnchors()
+       sdk.syncNow { }
+       ```
+       After a successful re-sync you should see `sleep_count > 0` on `*_sdk_batch_received` and a `sleep_batch_processed` log with a newer `batch_end`.
+
+    4. **Check sleep permission + `syncDaysBack`**
+       Users can deny Sleep while approving other types. A tight `syncDaysBack` window can also exclude older nights you expect during a recovery sync.
+  </Accordion>
+
   <Accordion title="Sync doesn't resume after app restart">
     **Symptoms:** Sync session lost after app is killed or device restarts.
 
