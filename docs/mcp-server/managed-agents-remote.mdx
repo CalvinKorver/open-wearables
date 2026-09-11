@@ -223,6 +223,7 @@ Managed Agents connect from Anthropic's cloud. Allow [Anthropic egress IPs](http
 | Tools fail / 401 to backend | `OPEN_WEARABLES_API_URL` and `OPEN_WEARABLES_API_KEY` on the **MCP** service |
 | MCP tools missing in session | Agent includes `mcp_toolset` with `mcp_server_name` matching `mcp_servers[].name` |
 | Session has no MCP auth | `vault_ids` passed at session creation |
+| Coach briefing says the wearable API returned 400 | MCP Streamable HTTP 400 `No valid session ID provided` after Railway App Sleep. See [Railway MCP deploy](/deployment/railway-mcp#keep-the-container-awake). |
 | Wrong users returned | `OPEN_WEARABLES_API_KEY` scope (personal vs team) |
 
 ## Related

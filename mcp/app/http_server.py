@@ -40,6 +40,11 @@ def run_streamable_http_server(server: FastMCP) -> None:
             path=settings.mcp_http_path,
             middleware=middleware,
             show_banner=True,
+            # In-memory MCP sessions die when Railway sleeps or restarts the
+            # container. Anthropic then retries with a stale mcp-session-id and
+            # FastMCP returns 400 "No valid session ID provided". Stateless
+            # mode treats each POST as a new transport so those retries succeed.
+            stateless_http=True,
         )
 
     asyncio.run(_serve())

@@ -87,11 +87,19 @@ Optional:
 
 Do **not** commit a production `.env` with these values into git. Keep secrets in Railway **Variables** (or references / secrets stores).
 
-## 3. Health check (recommended)
+## 3. Keep the container awake
+
+App Sleep stops the process and wipes in-memory Streamable HTTP sessions. Claude Managed Agents then retry with a stale `mcp-session-id` and FastMCP returns **400** `No valid session ID provided` — the coach surfaces that as a wearable API error.
+
+In Railway: **Settings → Deploy → App Sleeping → Off**. The HTTP server also runs Streamable HTTP in **stateless** mode so a stale session header is ignored after deploys or restarts.
+
+Optional: set **`FASTMCP_STATELESS_HTTP=true`** (the `start-http` entrypoint already passes `stateless_http=True`).
+
+## 4. Health check (recommended)
 
 Configure the service health check to **`GET /health`** on the public URL (path **`/health`** only — no Bearer header required).
 
-## 4. Deploy and verify
+## 5. Deploy and verify
 
 1. Trigger a deploy; wait for **Active**.
 2. Browser or curl:
@@ -111,7 +119,7 @@ Configure the service health check to **`GET /health`** on the public URL (path 
      https://<host>/mcp
    ```
 
-## 5. Connect Claude
+## 6. Connect Claude
 
 | Goal | Guide |
 |------|--------|
@@ -126,3 +134,4 @@ Configure the service health check to **`GET /health`** on the public URL (path 
 | Crash on boot “MCP_BEARER_TOKEN required” | Variable missing or typo; must be **uncommented** in Railway (no `#`). |
 | Tools fail / 401 to backend | **`OPEN_WEARABLES_API_URL`** and **`OPEN_WEARABLES_API_KEY`** on the **MCP** service, not only on Backend. |
 | Managed Agents MCP auth errors | **`mcp_server_url`** must match **`https://…/mcp`** character-for-character with the agent URL. |
+| Coach says wearable API returned 400; MCP logs `POST /mcp` 400 with no new session | App Sleep or a restart dropped in-memory sessions. Turn **App Sleeping** off. Confirm FastMCP is running **`stateless_http=True`**. Expect `Bad Request: No valid session ID provided` on a stale `mcp-session-id`. |
