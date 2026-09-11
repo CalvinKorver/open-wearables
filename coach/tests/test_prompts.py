@@ -1,6 +1,15 @@
 from datetime import date
 
-from app.agent.prompts import ALLOWED_TOOLS, SYSTEM_PROMPT, user_prompt
+from app.agent.prompts import (
+    ALLOWED_TOOLS,
+    CHAT_ALLOWED_TOOLS,
+    CHAT_SYSTEM_PROMPT,
+    MANAGED_SYSTEM_PROMPT,
+    MEMORY_ATTACHMENT_INSTRUCTIONS,
+    SYSTEM_PROMPT,
+    turn_context,
+    user_prompt,
+)
 
 
 def test_user_prompt_contains_iso_date_and_user_id():
@@ -22,9 +31,34 @@ def test_user_prompt_uses_same_date_for_start_and_end():
 
 
 def test_allowed_tools_subset():
-    assert ALLOWED_TOOLS == frozenset({"get_workout_events", "get_sleep_summary"})
+    assert frozenset({"get_workout_events", "get_sleep_summary"}) == ALLOWED_TOOLS
+
+
+def test_chat_allowed_tools_include_activity_and_timeseries():
+    assert ALLOWED_TOOLS < CHAT_ALLOWED_TOOLS
+    assert "get_activity_summary" in CHAT_ALLOWED_TOOLS
+    assert "get_timeseries" in CHAT_ALLOWED_TOOLS
+    assert "get_users" not in CHAT_ALLOWED_TOOLS
 
 
 def test_system_prompt_mentions_required_constraints():
     for token in ["HTML", "user_id", "yesterday", "Telegram", "<b>", "start_local", "IANA", "sleep"]:
         assert token in SYSTEM_PROMPT
+
+
+def test_chat_system_prompt_mentions_conversation_constraints():
+    for token in ["HTML", "user_id", "get_activity_summary", "get_timeseries", "Telegram", "<b>"]:
+        assert token in CHAT_SYSTEM_PROMPT
+
+
+def test_managed_prompt_defines_confirmed_structured_memory():
+    for token in ["athlete-profile.json", "goals", "injuries", "preferences", "confirmation", "/memory", "/forget"]:
+        assert token in MANAGED_SYSTEM_PROMPT
+    assert "sole durable memory" in MEMORY_ATTACHMENT_INSTRUCTIONS
+
+
+def test_turn_context_has_user_timezone_and_source():
+    context = turn_context(update_id=12, message_id=34)
+    assert "00000000-0000-0000-0000-000000000001" in context
+    assert "America/Los_Angeles" in context
+    assert "telegram:12:34" in context

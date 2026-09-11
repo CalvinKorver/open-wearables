@@ -10,9 +10,12 @@ from pathlib import Path
 
 _tmp_db = Path(tempfile.mkdtemp(prefix="coach-tests-")) / "coach.db"
 os.environ.setdefault("COACH_DB_PATH", str(_tmp_db))
-os.environ.setdefault("OPEN_WEARABLES_API_KEY", "test-key")
 os.environ.setdefault("OW_USER_ID", "00000000-0000-0000-0000-000000000001")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
+os.environ.setdefault("MANAGED_AGENT_ID", "agent_test")
+os.environ.setdefault("MANAGED_ENVIRONMENT_ID", "env_test")
+os.environ.setdefault("MANAGED_VAULT_IDS", "vault_test")
+os.environ.setdefault("MANAGED_MEMORY_STORE_ID", "memstore_test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-bot-token")
 os.environ.setdefault("TELEGRAM_CHAT_ID", "1234567")
 os.environ.setdefault("BRIEFING_TIMEZONE", "America/Los_Angeles")

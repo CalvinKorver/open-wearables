@@ -147,6 +147,7 @@
               "deployment/railway-mcp",
               "mcp-server/claude-custom-connector",
               "mcp-server/managed-agents-remote",
+              "coach",
               "dev-guides/fork-upstream-contributions"
             ]
           },

@@ -1,10 +1,10 @@
-"""Daily briefing orchestration: idempotency, MCP, agent, channel, persistence."""
+"""Daily briefing orchestration: idempotency, managed agent, channel, persistence."""
 
 from datetime import date, datetime, timedelta
 from logging import getLogger
 
-from app.agent.loop import generate_briefing
-from app.agent.mcp_client import open_mcp_client
+from app.agent.managed_client import run_turn
+from app.agent.prompts import user_prompt
 from app.channels.telegram import send_alert, send_briefing
 from app.config import settings
 from app.storage import db
@@ -28,16 +28,15 @@ async def run_for_date(local_date: date, *, force: bool = False) -> None:
         return
 
     logger.info(
-        "Generating briefing for %s force=%s tz=%s user_id=%s api=%s",
+        "Generating briefing for %s force=%s tz=%s user_id=%s managed_agent=%s",
         local_date,
         force,
         settings.briefing_timezone,
         settings.ow_user_id,
-        settings.open_wearables_api_url,
+        settings.managed_agent_id,
     )
     try:
-        async with open_mcp_client() as session:
-            text = await generate_briefing(session, local_date)
+        text = await run_turn(user_prompt(local_date, settings.ow_user_id))
     except Exception as e:
         logger.exception("Briefing generation failed for %s", local_date)
         db.mark_failed(local_date, f"generation: {e}")

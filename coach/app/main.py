@@ -4,8 +4,12 @@ import asyncio
 import logging
 import signal
 import sys
+from contextlib import suppress
 
+from app.channels import telegram
+from app.channels.poller import run_poller_forever
 from app.config import settings
+from app.logging_utils import install_secret_redaction
 from app.scheduler import build_scheduler
 from app.storage import db
 
@@ -18,6 +22,7 @@ def _configure_logging() -> None:
         format="%(asctime)s [%(name)s] %(levelname)s %(message)s",
         stream=sys.stdout,
     )
+    install_secret_redaction()
 
 
 def _validate_required() -> None:
@@ -31,6 +36,7 @@ def _validate_required() -> None:
 async def _run_forever() -> None:
     _validate_required()
     db.init_db()
+    await telegram.verify_bot()
     scheduler = build_scheduler()
     scheduler.start()
     logger.info("Coach scheduler started. Waiting for the next briefing.")
@@ -38,16 +44,18 @@ async def _run_forever() -> None:
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
+        with suppress(NotImplementedError):
             loop.add_signal_handler(sig, stop.set)
-        except NotImplementedError:
-            pass
 
+    poller = asyncio.create_task(run_poller_forever(stop), name="telegram-poller")
     try:
         await stop.wait()
     finally:
-        logger.info("Shutting down scheduler")
+        logger.info("Shutting down scheduler and Telegram poller")
         scheduler.shutdown(wait=False)
+        poller.cancel()
+        with suppress(asyncio.CancelledError):
+            await poller
 
 
 def main() -> None:

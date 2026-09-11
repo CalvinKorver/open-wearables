@@ -1,14 +1,19 @@
 """SQLite storage for the coach service.
 
-The only persisted state for v1 is a `briefing_run` row per local date, used as
-an idempotency guard so a single date can never be briefed twice.
+Persisted state:
+- ``briefing_run`` — one row per local date, an idempotency guard so a date is
+  never briefed twice unless ``--force``.
+- ``telegram_state`` — getUpdates offset so restarts do not re-handle old DMs.
+- ``managed_session_state`` — the active Anthropic Managed Agents session ID.
+
+Conversation and semantic memory live only in Anthropic Managed Agents.
 """
 
 from datetime import date, datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
-from sqlalchemy import Date, DateTime, String, create_engine
+from sqlalchemy import Date, DateTime, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from app.config import settings
@@ -35,6 +40,25 @@ class BriefingRun(Base):
     error: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
 
+class TelegramState(Base):
+    """Singleton row (id=1) holding the next getUpdates offset."""
+
+    __tablename__ = "telegram_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    next_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class ManagedSessionState(Base):
+    """Singleton row (id=1) for the active Anthropic session."""
+
+    __tablename__ = "managed_session_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 def _build_engine_url(db_path: str) -> str:
     p = Path(db_path)
     if not p.is_absolute():
@@ -50,6 +74,9 @@ _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
 def init_db() -> None:
     """Create tables if they don't yet exist. Safe to call repeatedly."""
     Base.metadata.create_all(_engine)
+    # Conversation history moved to Anthropic sessions. Remove legacy local copies.
+    with _engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS conversation_turn"))
 
 
 def session() -> Session:
@@ -121,3 +148,44 @@ def mark_failed(local_date: date, error: str) -> None:
 def get_run(local_date: date) -> BriefingRun | None:
     with session() as s:
         return s.get(BriefingRun, local_date)
+
+
+def get_telegram_offset() -> int | None:
+    with session() as s:
+        row = s.get(TelegramState, 1)
+        return row.next_offset if row is not None else None
+
+
+def set_telegram_offset(offset: int) -> None:
+    with session() as s:
+        row = s.get(TelegramState, 1)
+        if row is None:
+            s.add(TelegramState(id=1, next_offset=offset))
+        else:
+            row.next_offset = offset
+        s.commit()
+
+
+def get_managed_session_id() -> str | None:
+    with session() as s:
+        row = s.get(ManagedSessionState, 1)
+        return row.session_id if row is not None else None
+
+
+def set_managed_session_id(session_id: str) -> None:
+    with session() as s:
+        row = s.get(ManagedSessionState, 1)
+        if row is None:
+            s.add(ManagedSessionState(id=1, session_id=session_id, created_at=utcnow()))
+        else:
+            row.session_id = session_id
+            row.created_at = utcnow()
+        s.commit()
+
+
+def clear_managed_session() -> None:
+    with session() as s:
+        row = s.get(ManagedSessionState, 1)
+        if row is not None:
+            s.delete(row)
+        s.commit()
